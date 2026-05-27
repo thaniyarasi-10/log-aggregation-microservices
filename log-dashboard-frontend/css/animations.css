@@ -1,0 +1,27 @@
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+}
+
+@keyframes pulseValue {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); color: var(--accent-color); }
+    100% { transform: scale(1); }
+}
+
+.pulse {
+    animation: pulseValue 0.3s ease-out;
+}
+
+@keyframes overlayRise {
+    0% { opacity: 0; transform: translateY(10px) scale(0.99); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.oauth-panel {
+    animation: overlayRise 0.35s ease-out;
+}
