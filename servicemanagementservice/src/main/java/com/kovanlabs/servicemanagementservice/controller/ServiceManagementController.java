@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.kovanlabs.servicemanagementservice.dto.ServiceRequestCreateRequest;
@@ -78,5 +79,18 @@ public class ServiceManagementController {
     @GetMapping("/{serviceName}/approved")
     public ResponseEntity<java.util.Map<String, Boolean>> checkApproval(@PathVariable("serviceName") String serviceName) {
         return ResponseEntity.ok(java.util.Map.of("approved", workflowService.isServiceApproved(serviceName)));
+    }
+
+    @PostMapping("/{serviceName}/primary-owner")
+    public ResponseEntity<?> setPrimaryOwner(
+            @PathVariable("serviceName") String serviceName,
+            @RequestParam("userId") String userId,
+            @RequestHeader(value = "X-User-Role", required = false) String userRole) {
+        if (userRole == null || !userRole.equalsIgnoreCase("admin")) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                    .body("Only administrators can assign primary owners");
+        }
+        workflowService.setPrimaryOwner(serviceName, userId);
+        return ResponseEntity.ok().build();
     }
 }

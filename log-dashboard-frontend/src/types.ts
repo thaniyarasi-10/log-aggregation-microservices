@@ -86,12 +86,19 @@ export interface UserRecord {
   role?: string;
 }
 
+export interface ServiceOwner {
+  userId: string;
+  username: string;
+  primary: boolean;
+}
+
 export interface ServiceRecord {
   id?: string;
   name: string;
   description?: string;
   status?: string;
   active?: boolean;
+  owners?: ServiceOwner[];
 }
 
 export interface ServiceAccessRequest {
@@ -116,6 +123,7 @@ export interface AuthUser {
   assignedServices?: string[];
   canManageUsers: boolean;
   canManageServices: boolean;
+  profileImageUrl?: string;
 }
 
 export type AgentMode = 'qa' | 'summary';
@@ -156,4 +164,32 @@ export interface NotificationPreference {
 /** Request body for updating notification preferences */
 export interface NotificationPreferenceUpdate {
   emailEnabled: boolean;
+}
+
+export interface JiraConfiguration {
+  id?: string;
+  jiraBaseUrl: string;
+  jiraEmail: string;
+  jiraApiToken?: string;
+  jiraProjectKey: string;
+  active?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UserJiraMapping {
+  id?: string;
+  userId: string;
+  username?: string;
+  ownedServices?: string;
+  jiraAccountId: string;
+  jiraDisplayName: string;
+  active?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface JiraUser {
+  accountId: string;
+  displayName: string;
 }

@@ -227,6 +227,19 @@ export default function ServicesPage() {
     }
   };
 
+  const handleSetPrimaryOwner = async (serviceName: string, userId: string) => {
+    try {
+      setSubmitting(true);
+      setActionError('');
+      await apiService.setPrimaryOwner(serviceName, userId);
+      await loadServices();
+    } catch (err) {
+      setActionError(extractApiErrorMessage(err, 'Failed to update primary owner'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const openCreateInline = () => {
     setShowCreateInline(true);
     window.setTimeout(() => {
@@ -293,6 +306,7 @@ export default function ServicesPage() {
               <tr>
                 <th>Name</th>
                 <th>Description</th>
+                <th>Owners (Primary Owner)</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -302,6 +316,35 @@ export default function ServicesPage() {
                 <tr key={service.id || service.name} className="clickable-row">
                   <td className="services-cell-name">{service.name}</td>
                   <td className="services-cell-description">{service.description || '-'}</td>
+                  <td className="services-cell-owners">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {service.owners && service.owners.map((owner) => (
+                        <label
+                          key={owner.userId}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '0.8rem',
+                            cursor: isAdmin ? 'pointer' : 'default',
+                            color: 'var(--text-secondary)'
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name={`primary-owner-${service.name}`}
+                            checked={owner.primary}
+                            disabled={submitting || !isAdmin}
+                            onChange={() => void handleSetPrimaryOwner(service.name, owner.userId)}
+                          />
+                          {owner.username}
+                        </label>
+                      ))}
+                      {(!service.owners || service.owners.length === 0) && (
+                        <span className="tag tag-error">No Owners Assigned</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="services-cell-status">{service.status || (service.active === false ? 'INACTIVE' : 'ACTIVE')}</td>
                   <td className="services-cell-actions">
                     {isAdmin ? (
@@ -325,7 +368,7 @@ export default function ServicesPage() {
               ))}
               {!services.length && (
                 <tr>
-                  <td colSpan={4}>No services available</td>
+                  <td colSpan={5}>No services available</td>
                 </tr>
               )}
             </tbody>

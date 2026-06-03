@@ -30,11 +30,14 @@ class ServiceRequestWorkflowServiceTest {
     @Mock
     private AppServiceRepository appServiceRepository;
 
+    @Mock
+    private com.kovanlabs.servicemanagementservice.repository.UserServiceMappingRepository userServiceMappingRepository;
+
     private ServiceRequestWorkflowService service;
 
     @BeforeEach
     void setUp() {
-        service = new ServiceRequestWorkflowService(serviceAccessRequestRepository, appServiceRepository);
+        service = new ServiceRequestWorkflowService(serviceAccessRequestRepository, appServiceRepository, userServiceMappingRepository);
     }
 
     @Test

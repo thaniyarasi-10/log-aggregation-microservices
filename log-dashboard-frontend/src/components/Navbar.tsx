@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -56,7 +56,7 @@ function PersonIcon() {
 }
 
 export default function Navbar() {
-  const { user, role, canAccessUsers, canAccessServices, logout } = useAuth();
+  const { user, role, isAdmin, canAccessUsers, canAccessServices, logout, refreshSession } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   const [profileOpen, setProfileOpen]   = useState(false);
@@ -65,8 +65,38 @@ export default function Navbar() {
   const [alerts, setAlerts]             = useState<AlertItem[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(false);
 
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+
+  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadError(null);
+
+    try {
+      await apiService.uploadProfileImage(file);
+      await refreshSession();
+    } catch (err) {
+      console.error('Failed to upload image:', err);
+      let errMsg = 'Failed to upload profile image';
+      if (err instanceof Error) {
+        const axiosErr = err as any;
+        if (axiosErr.response?.data?.message) {
+          errMsg = axiosErr.response.data.message;
+        } else if (axiosErr.message) {
+          errMsg = axiosErr.message;
+        }
+      }
+      setUploadError(errMsg);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -135,6 +165,7 @@ export default function Navbar() {
             <NavLink to="/logs" className={getClassName}>Logs</NavLink>
             {canAccessUsers && <NavLink to="/users" className={getClassName}>Users</NavLink>}
             {canAccessServices && <NavLink to="/services" className={getClassName}>Services</NavLink>}
+            {isAdmin && <NavLink to="/settings/jira" className={getClassName}>Jira Integration</NavLink>}
           </nav>
 
           {/* Theme toggle — SVG moon/sun */}
@@ -206,12 +237,47 @@ export default function Navbar() {
           onClick={() => { setProfileOpen((o) => !o); setNotifOpen(false); setNotifPanelOpen(false); }}
           aria-label="Profile"
           title="Profile"
+          style={user?.profileImageUrl ? { padding: 0, overflow: 'hidden' } : {}}
         >
-          <PersonIcon />
+          {user?.profileImageUrl ? (
+            <img src={user.profileImageUrl} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <PersonIcon />
+          )}
         </button>
 
         {profileOpen && (
           <div className="profile-dropdown">
+            <div className="header-profile-avatar-wrap">
+              {user?.profileImageUrl ? (
+                <img src={user.profileImageUrl} alt="Avatar" className="header-profile-avatar" />
+              ) : (
+                <div className="header-profile-avatar-placeholder">
+                  <PersonIcon />
+                </div>
+              )}
+              <label className="header-profile-upload-label" title="Upload new profile picture">
+                {uploading ? (
+                  <span className="upload-spinner" />
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                )}
+                <input
+                  type="file"
+                  accept="image/png, image/jpeg, image/gif"
+                  onChange={handleImageUpload}
+                  style={{ display: 'none' }}
+                  disabled={uploading}
+                />
+              </label>
+            </div>
+            {uploadError && (
+              <div className="profile-upload-error">{uploadError}</div>
+            )}
             <div className="header-profile-info">
               <div className="header-profile-name">{displayName}</div>
               {user?.email && user.email !== displayName && (

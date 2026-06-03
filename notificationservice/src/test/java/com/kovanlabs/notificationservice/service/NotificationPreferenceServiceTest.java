@@ -29,24 +29,24 @@ class NotificationPreferenceServiceTest {
 
     @Test
     void getOrCreatePreference_defaultsEmailEnabledToTrue() {
-        when(repository.findByUserEmailIgnoreCase("dev@test.com")).thenReturn(Optional.empty());
+        when(repository.findByUserId("user-123")).thenReturn(Optional.empty());
         when(repository.save(any(NotificationPreference.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        NotificationPreference preference = service.getOrCreatePreference("dev@test.com");
+        NotificationPreference preference = service.getOrCreatePreference("user-123");
         assertThat(preference.isEmailEnabled()).isTrue();
-        assertThat(preference.getUserEmail()).isEqualTo("dev@test.com");
+        assertThat(preference.getUserId()).isEqualTo("user-123");
     }
 
     @Test
     void updatePreference_persistsLatestFlag() {
         NotificationPreference existing = new NotificationPreference();
-        existing.setUserEmail("dev@test.com");
+        existing.setUserId("user-123");
         existing.setEmailEnabled(true);
 
-        when(repository.findByUserEmailIgnoreCase("dev@test.com")).thenReturn(Optional.of(existing));
+        when(repository.findByUserId("user-123")).thenReturn(Optional.of(existing));
         when(repository.save(any(NotificationPreference.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        NotificationPreference updated = service.updatePreference("dev@test.com", false);
+        NotificationPreference updated = service.updatePreference("user-123", false);
         assertThat(updated.isEmailEnabled()).isFalse();
     }
 }

@@ -1,9 +1,6 @@
 package com.kovanlabs.notificationservice.service;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
-
 
 import org.springframework.stereotype.Service;
 
@@ -19,22 +16,22 @@ public class NotificationPreferenceService {
         this.notificationPreferenceRepository = notificationPreferenceRepository;
     }
 
-    public NotificationPreference getOrCreatePreference(String email) {
-        String normalized = normalize(email);
-        return notificationPreferenceRepository.findByUserEmailIgnoreCase(normalized)
+    public NotificationPreference getOrCreatePreference(String userId) {
+        String normalized = normalize(userId);
+        return notificationPreferenceRepository.findByUserId(normalized)
                 .orElseGet(() -> notificationPreferenceRepository.save(createDefault(normalized)));
     }
 
-    public NotificationPreference updatePreference(String email, boolean emailEnabled) {
-        NotificationPreference preference = getOrCreatePreference(email);
+    public NotificationPreference updatePreference(String userId, boolean emailEnabled) {
+        NotificationPreference preference = getOrCreatePreference(userId);
         preference.setEmailEnabled(emailEnabled);
         preference.setUpdatedAt(LocalDateTime.now());
         return notificationPreferenceRepository.save(preference);
     }
 
-    private NotificationPreference createDefault(String email) {
+    private NotificationPreference createDefault(String userId) {
         NotificationPreference preference = new NotificationPreference();
-        preference.setUserEmail(email);
+        preference.setUserId(userId);
         preference.setEmailEnabled(true);
         preference.setSmsEnabled(false);
         preference.setPushEnabled(false);
@@ -44,6 +41,6 @@ public class NotificationPreferenceService {
     }
 
     private String normalize(String value) {
-        return value == null ? "anonymous@local" : value.trim().toLowerCase();
+        return value == null ? "anonymous" : value.trim();
     }
 }

@@ -148,7 +148,8 @@ public class AuthService {
                 user.getEmail(),
                 roles,
                 permissions,
-                services);
+                services,
+                user.getProfileImageUrl());
     }
 
 

@@ -29,6 +29,9 @@ public class UserServiceMapping {
     @JoinColumn(name = "service_id", nullable = false)
     private AppService service;
 
+    @Column(name = "is_primary", nullable = false)
+    private boolean primary = false;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -57,6 +60,14 @@ public class UserServiceMapping {
 
     public void setService(AppService service) {
         this.service = service;
+    }
+
+    public boolean isPrimary() {
+        return primary;
+    }
+
+    public void setPrimary(boolean primary) {
+        this.primary = primary;
     }
 
     public LocalDateTime getCreatedAt() {

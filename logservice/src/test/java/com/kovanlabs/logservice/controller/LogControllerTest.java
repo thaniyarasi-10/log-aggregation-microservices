@@ -2,16 +2,20 @@ package com.kovanlabs.logservice.controller;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kovanlabs.logservice.model.LogDto;
 import com.kovanlabs.logservice.model.LogEvent;
+import com.kovanlabs.logservice.repository.ElasticRepository;
 import com.kovanlabs.logservice.service.LogProcessingService;
+import com.kovanlabs.logservice.service.RedisLogService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +30,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class LogControllerTest {
 
     @Mock private LogProcessingService processingService;
+    @Mock private RedisLogService redisLogService;
+    @Mock private ElasticRepository elasticRepository;
 
     @InjectMocks private LogController controller;
 
@@ -43,13 +49,17 @@ class LogControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(logEvent("payment-service", "ERROR"))))
                 .andExpect(status().isOk())
-                .andExpect(content().string("{\"status\":\"success\",\"message\":\"Log received\"}"));
+                .andExpect(jsonPath("$.status").value("success"))
+                .andExpect(jsonPath("$.message").value("Log received"));
 
         verify(processingService).processLogEvent(any(LogEvent.class));
     }
 
     @Test
     void search_returnsEmptyList() throws Exception {
+        when(elasticRepository.searchMulti(any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), any()))
+                .thenReturn(java.util.List.of());
+
         mockMvc.perform(get("/api/logs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
@@ -62,5 +72,23 @@ class LogControllerTest {
         event.setMessage("test message");
         event.setTimestamp("2026-05-01T10:00:00Z");
         return event;
+    }
+
+    @Test
+    void getLatestErrors_returnsErrorsList() throws Exception {
+        java.util.List<LogEvent> errors = java.util.List.of(logEvent("payment-service", "ERROR"));
+        when(elasticRepository.searchMulti(
+                any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), any()
+        )).thenReturn(errors);
+
+        mockMvc.perform(get("/api/logs/latest-errors"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].service").value("payment-service"))
+                .andExpect(jsonPath("$[0].level").value("ERROR"));
+
+        verify(elasticRepository).searchMulti(
+                any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), any()
+        );
     }
 }

@@ -1,0 +1,1 @@
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS profile_image_url VARCHAR(1000);

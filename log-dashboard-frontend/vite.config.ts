@@ -11,8 +11,7 @@ export default defineConfig({
       '/api/agent': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
-        secure: false,
-        logLevel: 'debug'
+        secure: false
       },
       '/ws': {
         target: 'http://localhost:8080',

@@ -9,6 +9,9 @@ import type {
   LogFilters,
   LogQueryParams,
   MetricsResponse,
+  JiraConfiguration,
+  UserJiraMapping,
+  JiraUser,
   NotificationPreference,
   NotificationPreferenceUpdate,
   ServiceAccessRequest,
@@ -439,6 +442,68 @@ export const apiService = {
   ): Promise<NotificationPreference> {
     const response = await api.put<NotificationPreference>('/notifications/preferences', payload);
     return response.data;
+  },
+
+  async uploadProfileImage(file: File): Promise<{ message: string; imageUrl: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post<{ message: string; imageUrl: string }>('/users/upload-profile-image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+    return response.data;
+  },
+
+  async getJiraConfiguration(): Promise<JiraConfiguration> {
+    const response = await api.get<JiraConfiguration>('/jira/configuration');
+    return response.data;
+  },
+
+  async saveJiraConfiguration(payload: JiraConfiguration): Promise<JiraConfiguration> {
+    const hasConfig = !!payload.id;
+    if (hasConfig) {
+      const response = await api.put<JiraConfiguration>('/jira/configuration', payload);
+      return response.data;
+    } else {
+      const response = await api.post<JiraConfiguration>('/jira/configuration', payload);
+      return response.data;
+    }
+  },
+
+  async testJiraConnection(payload: JiraConfiguration): Promise<{ message: string }> {
+    const response = await api.post<{ message: string }>('/jira/test-connection', payload);
+    return response.data;
+  },
+
+  async getJiraUsers(query?: string): Promise<JiraUser[]> {
+    const response = await api.get<JiraUser[]>('/jira/users', { params: { query } });
+    return response.data;
+  },
+
+  async getUserJiraMappings(): Promise<UserJiraMapping[]> {
+    const response = await api.get<UserJiraMapping[]>('/jira/user-mappings');
+    return response.data;
+  },
+
+  async createUserJiraMapping(payload: { userId: string; jiraAccountId: string; jiraDisplayName: string; active: boolean }): Promise<UserJiraMapping> {
+    const response = await api.post<UserJiraMapping>('/jira/user-mappings', payload);
+    return response.data;
+  },
+
+  async updateUserJiraMapping(id: string, payload: { userId: string; jiraAccountId: string; jiraDisplayName: string; active: boolean }): Promise<UserJiraMapping> {
+    const response = await api.put<UserJiraMapping>(`/jira/user-mappings/${id}`, payload);
+    return response.data;
+  },
+
+  async deleteUserJiraMapping(id: string): Promise<void> {
+    await api.delete(`/jira/user-mappings/${id}`);
+  },
+
+  async setPrimaryOwner(serviceName: string, userId: string): Promise<void> {
+    await api.post(`/services/${encodeURIComponent(serviceName)}/primary-owner`, null, {
+      params: { userId }
+    });
   }
 };
 
@@ -457,18 +522,9 @@ export const authService = {
 
   async logout(): Promise<void> {
     try {
-      await api.post('/logout');
-      return;
+      await api.post('/auth/logout');
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        try {
-          await api.get('/logout');
-          return;
-        } catch {
-          throw error as AxiosError;
-        }
-      }
-      throw error;
+      console.error('Logout request failed:', error);
     }
   }
 };

@@ -26,6 +26,7 @@ public class LogEvent {
     private String errorCode;
     private String errorDetails;
     private Object tags;
+    private String project;
 
     public LogEvent() {}
 
@@ -76,4 +77,7 @@ public class LogEvent {
 
     public Object getTags() { return tags; }
     public void setTags(Object tags) { this.tags = tags; }
+
+    public String getProject() { return project; }
+    public void setProject(String project) { this.project = project; }
 }

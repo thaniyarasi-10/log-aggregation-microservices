@@ -19,12 +19,15 @@ class LogProcessingServiceTest {
     @Mock private ElasticSearchService elasticSearchService;
     @Mock private MongoLogEventRepository mongoLogEventRepository;
     @Mock private ServiceApprovalClient serviceApprovalClient;
+    @Mock private RedisLogService redisLogService;
+    @Mock private WebSocketSessionTracker sessionTracker;
+    @Mock private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
 
     @InjectMocks private LogProcessingService service;
 
     @BeforeEach
     void setUp() {
-        service = new LogProcessingService(elasticSearchService, mongoLogEventRepository, serviceApprovalClient);
+        service = new LogProcessingService(elasticSearchService, mongoLogEventRepository, serviceApprovalClient, redisLogService, sessionTracker, messagingTemplate);
         org.mockito.Mockito.lenient().when(serviceApprovalClient.isApproved(any())).thenReturn(true);
     }
 

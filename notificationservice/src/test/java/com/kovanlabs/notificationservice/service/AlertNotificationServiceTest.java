@@ -13,6 +13,8 @@ import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
 import com.kovanlabs.notificationservice.dto.AlertNotificationRequest;
 import com.kovanlabs.notificationservice.model.NotificationPreference;
+import com.kovanlabs.notificationservice.model.Alert;
+import com.kovanlabs.notificationservice.repository.AlertRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,35 +29,51 @@ class AlertNotificationServiceTest {
     @Mock private ObjectProvider<JavaMailSender> mailSenderProvider;
     @Mock private NotificationPreferenceService preferenceService;
     @Mock private AlertEmailTemplateBuilder templateBuilder;
+    @Mock private JiraStoryService jiraStoryService;
+    @Mock private UserServiceClient userServiceClient;
     @Mock private JavaMailSender mailSender;
+    @Mock private AlertRepository alertRepository;
 
     private AlertNotificationService service;
 
     @BeforeEach
     void setUp() {
-        service = new AlertNotificationService(mailSenderProvider, preferenceService, templateBuilder);
+        service = new AlertNotificationService(
+                mailSenderProvider,
+                preferenceService,
+                templateBuilder,
+                jiraStoryService,
+                userServiceClient,
+                alertRepository
+        );
     }
 
     @Test
     void sendAlert_nullRequest_returnsFalse() {
         assertThat(service.sendAlert(null)).isFalse();
         verify(mailSenderProvider, never()).getIfAvailable();
+        verify(alertRepository, never()).save(any(Alert.class));
+        verify(jiraStoryService, never()).triggerJiraStoryCreation(any());
     }
 
     @Test
     void sendAlert_disabledPreference_skipsSend() {
-        when(preferenceService.getOrCreatePreference("dev@test.com")).thenReturn(preference(false));
+        when(userServiceClient.getUserIdByEmail("dev@test.com")).thenReturn("user-123");
+        when(preferenceService.getOrCreatePreference("user-123")).thenReturn(preference(false));
 
         boolean sent = service.sendAlert(new AlertNotificationRequest(
                 "dev@test.com", "Dev User", "payment-service", "CRITICAL", "DB timeout", 5));
 
         assertThat(sent).isFalse();
         verify(mailSenderProvider, never()).getIfAvailable();
+        verify(alertRepository).save(any(Alert.class));
+        verify(jiraStoryService).triggerJiraStoryCreation(any());
     }
 
     @Test
     void sendAlert_enabledPreference_sendsEmail() throws Exception {
-        when(preferenceService.getOrCreatePreference("dev@test.com")).thenReturn(preference(true));
+        when(userServiceClient.getUserIdByEmail("dev@test.com")).thenReturn("user-123");
+        when(preferenceService.getOrCreatePreference("user-123")).thenReturn(preference(true));
         when(mailSenderProvider.getIfAvailable()).thenReturn(mailSender);
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
         when(templateBuilder.buildPlainTextEmail(any(), anyString())).thenReturn("plain text");
@@ -66,6 +84,19 @@ class AlertNotificationServiceTest {
 
         assertThat(sent).isTrue();
         verify(mailSender).send(any(MimeMessage.class));
+        verify(alertRepository).save(any(Alert.class));
+        verify(jiraStoryService).triggerJiraStoryCreation(any());
+    }
+
+    @Test
+    void sendAlert_nullOrBlankEmail_savesAlertAndJiraButSkipsEmail() {
+        boolean sent = service.sendAlert(new AlertNotificationRequest(
+                null, "Dev User", "payment-service", "CRITICAL", "DB timeout", 5));
+
+        assertThat(sent).isTrue();
+        verify(alertRepository).save(any(Alert.class));
+        verify(jiraStoryService).triggerJiraStoryCreation(any());
+        verify(mailSenderProvider, never()).getIfAvailable();
     }
 
     private NotificationPreference preference(boolean enabled) {

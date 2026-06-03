@@ -44,8 +44,7 @@ export default function LogsPage() {
     [user?.allowedServices]
   );
 
-  // Metrics only depend on service + timeRange — level and search are intentionally excluded.
-  // For multi-select, join services into a single string for the metrics key.
+  // Metrics depend ONLY on service and timeRange.
   const metricsKey = `${filters.services.join(',')}|${filters.timeRange}`;
 
   // Logs react to all filters (service, timeRange, level, search).
@@ -64,11 +63,16 @@ export default function LogsPage() {
         const services = await apiService.fetchServices();
         if (!active) return;
 
-        const names = services
+        let names = services
           .map((item) => item.name)
-          .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
-          .sort((a, b) => a.localeCompare(b));
+          .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
 
+        if (!isAdmin) {
+          const allowed = new Set(allowedServices.map((s) => s.trim().toLowerCase()));
+          names = names.filter((name) => allowed.has(name.toLowerCase()));
+        }
+
+        names.sort((a, b) => a.localeCompare(b));
         setServiceOptions(names);
       } catch {
         if (active) {
@@ -82,17 +86,13 @@ export default function LogsPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [allowedServices, isAdmin]);
 
   // Fetch metrics from the API whenever service or timeRange changes.
-  // Level and search are deliberately NOT included — metrics must ignore those filters.
-  // The backend /logs/metrics endpoint accepts only: service, from, to, timePreset.
-  // When service is '' (All Services), the backend aggregates across all services the
-  // authenticated user is allowed to access (admin = all, dev = mapped services only).
   useEffect(() => {
     let active = true;
 
-    // Build a metrics-only filter: strip levels and search so they are never sent
+    // Build metrics filters excluding levels and search message
     const metricsFilters: LogFilters = {
       timeRange: filters.timeRange,
       services: filters.services,

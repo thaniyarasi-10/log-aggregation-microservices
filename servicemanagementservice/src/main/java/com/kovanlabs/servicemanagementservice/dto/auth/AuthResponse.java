@@ -10,5 +10,6 @@ public record AuthResponse(
         String email,
         List<String> roles,
         List<String> permissions,
-        List<String> services) {
+        List<String> services,
+        String profileImageUrl) {
 }

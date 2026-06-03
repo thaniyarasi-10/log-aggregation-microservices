@@ -12,35 +12,83 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.kovanlabs.servicemanagementservice.dto.ServiceOwnerView;
 import com.kovanlabs.servicemanagementservice.dto.ServiceRequestCreateRequest;
 import com.kovanlabs.servicemanagementservice.dto.ServiceRequestView;
 import com.kovanlabs.servicemanagementservice.dto.ServiceSummaryView;
 
 import com.kovanlabs.servicemanagementservice.model.AppService;
 import com.kovanlabs.servicemanagementservice.model.ServiceAccessRequest;
+import com.kovanlabs.servicemanagementservice.model.UserServiceMapping;
 import com.kovanlabs.servicemanagementservice.repository.AppServiceRepository;
 import com.kovanlabs.servicemanagementservice.repository.ServiceAccessRequestRepository;
+import com.kovanlabs.servicemanagementservice.repository.UserServiceMappingRepository;
 
 @Service
 public class ServiceRequestWorkflowService {
 
     private final ServiceAccessRequestRepository serviceAccessRequestRepository;
     private final AppServiceRepository appServiceRepository;
+    private final UserServiceMappingRepository userServiceMappingRepository;
 
     public ServiceRequestWorkflowService(ServiceAccessRequestRepository serviceAccessRequestRepository,
-                                         AppServiceRepository appServiceRepository) {
+                                         AppServiceRepository appServiceRepository,
+                                         UserServiceMappingRepository userServiceMappingRepository) {
         this.serviceAccessRequestRepository = serviceAccessRequestRepository;
         this.appServiceRepository = appServiceRepository;
+        this.userServiceMappingRepository = userServiceMappingRepository;
     }
 
     public List<ServiceSummaryView> listServices() {
         return appServiceRepository.findByActiveTrueOrderByNameAsc().stream()
-                .map(entry -> new ServiceSummaryView(
-                        entry.getId() == null ? null : entry.getId().toString(),
-                        entry.getName(),
-                        entry.getDescription(),
-                        entry.isActive()))
+                .map(entry -> {
+                    List<UserServiceMapping> mappings = userServiceMappingRepository.findByService_Id(entry.getId());
+                    List<ServiceOwnerView> owners = mappings.stream()
+                            .map(m -> new ServiceOwnerView(
+                                    m.getUser().getId(),
+                                    m.getUser().getUsername(),
+                                    m.isPrimary()))
+                            .toList();
+                    return new ServiceSummaryView(
+                            entry.getId() == null ? null : entry.getId().toString(),
+                            entry.getName(),
+                            entry.getDescription(),
+                            entry.isActive(),
+                            owners);
+                })
                 .toList();
+    }
+
+    @Transactional
+    public void setPrimaryOwner(String serviceName, String userId) {
+        if (serviceName == null || serviceName.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Service name is required");
+        }
+        if (userId == null || userId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User ID is required");
+        }
+
+        AppService service = appServiceRepository.findByNameIgnoreCase(serviceName.trim())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Service not found: " + serviceName));
+
+        List<UserServiceMapping> mappings = userServiceMappingRepository.findByService_Id(service.getId());
+        boolean userFound = false;
+
+        for (UserServiceMapping mapping : mappings) {
+            if (mapping.getUser().getId().equals(userId.trim())) {
+                mapping.setPrimary(true);
+                userFound = true;
+            } else {
+                mapping.setPrimary(false);
+            }
+            mapping.setUpdatedAt(LocalDateTime.now());
+        }
+
+        if (!userFound) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User is not assigned to this service");
+        }
+
+        userServiceMappingRepository.saveAll(mappings);
     }
 
     public List<ServiceRequestView> listRequests(String requestedBy, boolean includeAll) {

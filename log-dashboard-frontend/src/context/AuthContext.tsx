@@ -38,6 +38,7 @@ function normalizeAuthPayload(payload: any): AuthUser {
   const roles: string[] = Array.isArray(payload.roles) ? payload.roles : [];
   const permissions: string[] = Array.isArray(payload.permissions) ? payload.permissions : [];
   const services: string[] = Array.isArray(payload.services) ? payload.services : [];
+  const profileImageUrl = payload.profileImageUrl || '';
 
   const isAdmin = roles.includes('ADMIN');
   const role = payload.role || (roles.length > 0 ? roles[0] : 'DEV');
@@ -53,7 +54,8 @@ function normalizeAuthPayload(payload: any): AuthUser {
       ? payload.assignedServices
       : (Array.isArray(payload.allowedServices) ? payload.allowedServices : services),
     canManageUsers: Boolean(payload.canManageUsers) || isAdmin,
-    canManageServices: Boolean(payload.canManageServices) || isAdmin
+    canManageServices: Boolean(payload.canManageServices) || isAdmin,
+    profileImageUrl
   };
 }
 

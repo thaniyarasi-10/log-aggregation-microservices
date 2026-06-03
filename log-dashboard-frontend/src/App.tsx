@@ -8,6 +8,7 @@ import LogsPage from './pages/LogsPage';
 import ServicesPage from './pages/ServicesPage';
 import UsersPage from './pages/UsersPage';
 import LoginCallback from './pages/LoginCallback';
+import JiraIntegrationPage from './pages/JiraIntegrationPage';
 
 function RouteLogger() {
   const location = useLocation();
@@ -20,7 +21,7 @@ function RouteLogger() {
 }
 
 export default function App() {
-  const { status, login, canAccessUsers, canAccessServices } = useAuth();
+  const { status, login, canAccessUsers, canAccessServices, isAdmin } = useAuth();
   const location = useLocation();
 
   if (status !== 'authenticated' && location.pathname !== '/login/callback') {
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/logs" element={<LogsPage />} />
         <Route path="/users" element={canAccessUsers ? <UsersPage /> : <Navigate to="/logs" replace />} />
         <Route path="/services" element={canAccessServices ? <ServicesPage /> : <Navigate to="/logs" replace />} />
+        <Route path="/settings/jira" element={isAdmin ? <JiraIntegrationPage /> : <Navigate to="/logs" replace />} />
         <Route path="*" element={<Navigate to="/logs" replace />} />
       </Routes>
       {location.pathname !== '/login/callback' && <FloatingAgent />}

@@ -18,16 +18,17 @@ public class NotificationPreference {
     @Column(name = "id", nullable = false)
     private UUID id;
 
-    @Column(name = "user_email", nullable = false, unique = true, length = 255)
-    private String userEmail;
+    @Column(name = "user_id", nullable = false, unique = true, length = 255)
+    private String userId;
 
+    @Column(name = "email_enabled", nullable = false)
     private boolean emailEnabled = true;
 
     @Column(name = "sms_enabled", nullable = false)
-    private boolean smsEnabled;
+    private boolean smsEnabled = false;
 
     @Column(name = "push_enabled", nullable = false)
-    private boolean pushEnabled;
+    private boolean pushEnabled = false;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -43,12 +44,12 @@ public class NotificationPreference {
         this.id = id;
     }
 
-    public String getUserEmail() {
-        return userEmail;
+    public String getUserId() {
+        return userId;
     }
 
-    public void setUserEmail(String userEmail) {
-        this.userEmail = userEmail;
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 
     public boolean isEmailEnabled() {

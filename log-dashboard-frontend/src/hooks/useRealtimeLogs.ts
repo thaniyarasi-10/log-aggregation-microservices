@@ -42,6 +42,7 @@ export function useRealtimeLogs(
   const allowedServicesRef = useRef<Set<string>>(new Set());
   const isAdminRef = useRef<boolean>(isAdmin);
   const seenKeysRef = useRef<Set<string>>(new Set());
+  const latestTimestampRef = useRef<string | null>(null);
 
   // WebSocket state refs — shared between the effect closure and reconnect timer
   const wsConnectedRef = useRef<boolean>(false);
@@ -71,34 +72,6 @@ export function useRealtimeLogs(
 
     let active = true;
     let pollingTimer: number | null = null;
-    let reconnectTimer: number | null = null;
-
-    // ── STOMP helpers ──────────────────────────────────────────────────────────
-
-    const buildWsUrl = () => {
-      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      return `${protocol}://${window.location.host}/ws`;
-    };
-
-    const sendStompFrame = (command: string, headers: Record<string, string> = {}, body = '') => {
-      const sock = socketRef.current;
-      if (!sock || sock.readyState !== WebSocket.OPEN) {
-        return;
-      }
-      const headerLines = Object.entries(headers).map(([key, value]) => `${key}:${value}`);
-      const frame = [command, ...headerLines, '', body].join('\n') + '\0';
-      sock.send(frame);
-    };
-
-    const parseStompFrames = (raw: string) =>
-      raw.split('\0').map((frame) => frame.trim()).filter(Boolean);
-
-    const parseMessageBody = (frame: string) => {
-      const delimiter = '\n\n';
-      const idx = frame.indexOf(delimiter);
-      if (idx < 0) return '';
-      return frame.slice(idx + delimiter.length);
-    };
 
     // ── Filter helpers ─────────────────────────────────────────────────────────
 
@@ -112,11 +85,6 @@ export function useRealtimeLogs(
       return eventTs >= Date.now() - rangeMs;
     };
 
-    /**
-     * Returns true if the event should be shown given the current filters.
-     * Uses filtersRef so it always reflects the latest filter state without
-     * needing to recreate the WebSocket handler.
-     */
     const matchesFilters = (event: LogEvent): boolean => {
       const currentFilters = filtersRef.current;
 
@@ -126,14 +94,12 @@ export function useRealtimeLogs(
         if (allowed.size > 0) {
           const eventService = normalize(event.service || '');
           if (eventService && !allowed.has(eventService)) {
-            console.debug('[WS] RBAC drop — service not in allowedServices:', event.service);
             return false;
           }
         }
       }
 
       // ── UI filter checks ───────────────────────────────────────────────────
-      // Multi-select: empty array = no filter (show all)
       const selectedServices = currentFilters.services ?? [];
       if (selectedServices.length > 0) {
         const eventService = normalize(event.service || '');
@@ -156,138 +122,32 @@ export function useRealtimeLogs(
       return withinTimeRange(event['@timestamp']);
     };
 
-    const eventKey = (event: LogEvent) =>
-      `${event['@timestamp'] ?? ''}|${event.service ?? ''}|${event.level ?? ''}|${event.traceId ?? ''}|${event.message ?? ''}`;
-
-    // ── WebSocket / STOMP connection ───────────────────────────────────────────
-
-    const connectRealtime = () => {
-      // Don't open a second socket if one is already open or connecting
-      if (
-        socketRef.current &&
-        (socketRef.current.readyState === WebSocket.OPEN ||
-          socketRef.current.readyState === WebSocket.CONNECTING)
-      ) {
-        return;
-      }
-
-      console.debug('[WS] Connecting to', buildWsUrl());
-
-      let sock: WebSocket;
-      try {
-        sock = new WebSocket(buildWsUrl());
-      } catch (err) {
-        console.warn('[WS] Failed to create WebSocket:', err);
-        return;
-      }
-
-      socketRef.current = sock;
-
-      sock.onopen = () => {
-        if (!active) return;
-        console.debug('[WS] Connection open — sending STOMP CONNECT');
-        wsConnectedRef.current = true;
-        stompSubscribedRef.current = false;
-        sendStompFrame('CONNECT', {
-          'accept-version': '1.2',
-          'heart-beat': '10000,10000',
-        });
-      };
-
-      sock.onmessage = (evt) => {
-        if (!active) return;
-
-        const frames = parseStompFrames(String(evt.data || ''));
-        for (const frame of frames) {
-          // ── STOMP CONNECTED — now subscribe ──────────────────────────────
-          if (frame.startsWith('CONNECTED')) {
-            console.debug('[WS] STOMP CONNECTED — subscribing to /user/queue/logs');
-            stompSubscribedRef.current = true;
-            sendStompFrame('SUBSCRIBE', {
-              id: 'logs-subscription',
-              destination: '/user/queue/logs',
-              ack: 'auto',
-            });
-            continue;
-          }
-
-          if (!frame.startsWith('MESSAGE')) continue;
-
-          const body = parseMessageBody(frame);
-          if (!body) continue;
-
-          try {
-            const incoming = JSON.parse(body) as LogEvent;
-            console.debug('[WS] Message received — service:', incoming?.service, 'level:', incoming?.level);
-
-            if (!incoming) continue;
-
-            if (!matchesFilters(incoming)) {
-              console.debug('[WS] Message filtered out by current filters');
-              continue;
-            }
-
-            const key = eventKey(incoming);
-
-            // Deduplicate before touching state
-            if (seenKeysRef.current.has(key)) {
-              console.debug('[WS] Duplicate message dropped');
-              continue;
-            }
-            seenKeysRef.current.add(key);
-
-            // Prepend so newest logs appear at the top immediately.
-            // Using functional update avoids stale closure issues.
-            setLogs((prev) => {
-              // Double-check against current state in case the ref was stale
-              if (prev.some((item) => eventKey(item) === key)) return prev;
-              console.debug('[WS] State updated — total logs:', prev.length + 1);
-              return [incoming, ...prev];
-            });
-
-            setError('');
-          } catch {
-            // Ignore malformed WebSocket messages; polling fallback will cover gaps.
-          }
-        }
-      };
-
-      sock.onclose = (evt) => {
-        console.debug('[WS] Connection closed — code:', evt.code, 'reason:', evt.reason);
-        wsConnectedRef.current = false;
-        stompSubscribedRef.current = false;
-        if (socketRef.current === sock) {
-          socketRef.current = null;
-        }
-
-        // Schedule reconnect after 3 seconds if the effect is still active
-        if (active) {
-          console.debug('[WS] Scheduling reconnect in 3s');
-          reconnectTimer = window.setTimeout(() => {
-            if (active) {
-              console.debug('[WS] Attempting reconnect');
-              connectRealtime();
-            }
-          }, 3000);
-        }
-      };
-
-      sock.onerror = (err) => {
-        console.warn('[WS] WebSocket error:', err);
-        // onclose will fire after onerror — reconnect is handled there
-      };
-    };
-
-    // ── HTTP polling — merges with existing logs, never replaces ──────────────
+    // ── HTTP polling — periodically query Elasticsearch ──────────────────────
 
     const pullLogs = async () => {
       try {
-        const data = await apiService.fetchLogs(filtersRef.current);
+        let fromVal: string | undefined = undefined;
+        if (latestTimestampRef.current) {
+          const ms = new Date(latestTimestampRef.current).getTime();
+          fromVal = new Date(ms - 5000).toISOString();
+        }
+        const fetchFilters = fromVal ? { ...filtersRef.current, from: fromVal } : filtersRef.current;
+        const data = await apiService.fetchLogs(fetchFilters);
         if (!active) return;
 
         if (!Array.isArray(data) || data.length === 0) {
           setLoading(false);
           return;
+        }
+
+        const timestamps = data
+          .map((e) => e['@timestamp'])
+          .filter((ts): ts is string => typeof ts === 'string' && ts.trim().length > 0);
+        if (timestamps.length > 0) {
+          const maxTs = timestamps.reduce((max, current) => current > max ? current : max);
+          if (!latestTimestampRef.current || maxTs > latestTimestampRef.current) {
+            latestTimestampRef.current = maxTs;
+          }
         }
 
         setLogs((prev) => {
@@ -296,7 +156,7 @@ export function useRealtimeLogs(
           const newEntries = data.filter((e) => {
             const k = eventKey(e);
             if (existingKeys.has(k)) return false;
-            // Also register in the global seen-keys set so WS doesn't re-add them
+            // Also register in the global seen-keys set so other triggers don't duplicate
             seenKeysRef.current.add(k);
             return true;
           });
@@ -304,7 +164,6 @@ export function useRealtimeLogs(
           if (newEntries.length === 0) return prev;
 
           console.debug('[POLL] Merging', newEntries.length, 'new log(s) from HTTP poll');
-          // Combine and let LogsPage sort by timestamp
           return [...prev, ...newEntries];
         });
 
@@ -323,27 +182,16 @@ export function useRealtimeLogs(
       // Initial fetch to populate the table immediately
       void pullLogs();
       pollingTimer = window.setInterval(() => {
-        // Always poll — it merges safely even when WS is active
         void pullLogs();
       }, intervalMs);
     };
 
     // ── Boot ───────────────────────────────────────────────────────────────────
-    connectRealtime();
     startPolling();
 
     return () => {
       active = false;
       if (pollingTimer !== null) window.clearInterval(pollingTimer);
-      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
-      const sock = socketRef.current;
-      if (sock && sock.readyState === WebSocket.OPEN) {
-        sendStompFrame('DISCONNECT');
-        sock.close();
-      }
-      socketRef.current = null;
-      wsConnectedRef.current = false;
-      stompSubscribedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, intervalMs]); // Filters intentionally excluded — handled via filtersRef
@@ -358,6 +206,7 @@ export function useRealtimeLogs(
   useEffect(() => {
     // Don't run on initial mount — the main effect handles the first load
     seenKeysRef.current = new Set();
+    latestTimestampRef.current = null;
     setLogs([]);
     setLoading(true);
 
@@ -366,6 +215,12 @@ export function useRealtimeLogs(
       if (!active) return;
       if (Array.isArray(data) && data.length > 0) {
         data.forEach((e) => seenKeysRef.current.add(eventKey(e)));
+        const timestamps = data
+          .map((e) => e['@timestamp'])
+          .filter((ts): ts is string => typeof ts === 'string' && ts.trim().length > 0);
+        if (timestamps.length > 0) {
+          latestTimestampRef.current = timestamps.reduce((max, current) => current > max ? current : max);
+        }
         setLogs(data);
       }
       setError('');

@@ -12,4 +12,6 @@ public interface UserServiceMappingRepository extends JpaRepository<UserServiceM
 	List<UserServiceMapping> findByUser_Id(String userId);
 
 	boolean existsByUser_IdAndService_Id(String userId, UUID serviceId);
+
+	List<UserServiceMapping> findByService_Id(UUID serviceId);
 }
