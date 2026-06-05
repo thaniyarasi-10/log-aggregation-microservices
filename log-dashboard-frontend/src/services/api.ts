@@ -504,6 +504,30 @@ export const apiService = {
     await api.post(`/services/${encodeURIComponent(serviceName)}/primary-owner`, null, {
       params: { userId }
     });
+  },
+
+  async fetchSourceCode(
+    service: string,
+    className?: string,
+    fileName?: string,
+    line?: number
+  ): Promise<{
+    service: string;
+    fileName: string;
+    filePath: string;
+    lineNumber: number;
+    fileContent: string;
+    targetLine: number;
+  }> {
+    const response = await api.get('/logs/source-code', {
+      params: {
+        service,
+        class: className,
+        file: fileName,
+        line
+      }
+    });
+    return response.data;
   }
 };
 

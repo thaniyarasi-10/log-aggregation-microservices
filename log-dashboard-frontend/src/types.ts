@@ -17,6 +17,12 @@ export interface LogEvent {
   responseTime?: number;
   errorCode?: string;
   errorDetails?: string;
+  caller?: {
+    class?: string;
+    method?: string;
+    file?: string;
+    line?: number;
+  };
 }
 
 export interface LogFilters {

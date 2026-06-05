@@ -16,6 +16,7 @@ import com.kovanlabs.logservice.model.LogEvent;
 import com.kovanlabs.logservice.repository.ElasticRepository;
 import com.kovanlabs.logservice.service.LogProcessingService;
 import com.kovanlabs.logservice.service.RedisLogService;
+import com.kovanlabs.logservice.service.SourceCodeService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,7 @@ class LogControllerTest {
     @Mock private LogProcessingService processingService;
     @Mock private RedisLogService redisLogService;
     @Mock private ElasticRepository elasticRepository;
+    @Mock private SourceCodeService sourceCodeService;
 
     @InjectMocks private LogController controller;
 
@@ -90,5 +92,38 @@ class LogControllerTest {
         verify(elasticRepository).searchMulti(
                 any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), any()
         );
+    }
+
+    @Test
+    void getSourceCode_returnsNotFound() throws Exception {
+        when(sourceCodeService.getSourceCode(any(), any(), any(), any()))
+                .thenReturn(null);
+
+        mockMvc.perform(get("/api/logs/source-code")
+                        .param("service", "logservice")
+                        .param("file", "LogController.java"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Source file not found"));
+    }
+
+    @Test
+    void getSourceCode_returnsFileContent() throws Exception {
+        java.util.Map<String, Object> mockResponse = java.util.Map.of(
+                "service", "logservice",
+                "fileName", "LogController.java",
+                "filePath", "logservice/src/main/java/com/kovanlabs/logservice/controller/LogController.java",
+                "lineNumber", 10,
+                "fileContent", "public class LogController {}"
+        );
+        when(sourceCodeService.getSourceCode(any(), any(), any(), any()))
+                .thenReturn(mockResponse);
+
+        mockMvc.perform(get("/api/logs/source-code")
+                        .param("service", "logservice")
+                        .param("file", "LogController.java")
+                        .param("line", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.service").value("logservice"))
+                .andExpect(jsonPath("$.fileContent").value("public class LogController {}"));
     }
 }

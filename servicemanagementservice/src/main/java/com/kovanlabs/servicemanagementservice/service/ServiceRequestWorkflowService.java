@@ -27,6 +27,8 @@ import com.kovanlabs.servicemanagementservice.repository.UserServiceMappingRepos
 @Service
 public class ServiceRequestWorkflowService {
 
+    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(ServiceRequestWorkflowService.class);
+
     private final ServiceAccessRequestRepository serviceAccessRequestRepository;
     private final AppServiceRepository appServiceRepository;
     private final UserServiceMappingRepository userServiceMappingRepository;
@@ -37,6 +39,32 @@ public class ServiceRequestWorkflowService {
         this.serviceAccessRequestRepository = serviceAccessRequestRepository;
         this.appServiceRepository = appServiceRepository;
         this.userServiceMappingRepository = userServiceMappingRepository;
+    }
+
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    @org.springframework.transaction.annotation.Transactional
+    public void seedDefaultServices() {
+        java.util.List<String> defaults = java.util.List.of(
+            "gateway-service",
+            "logservice",
+            "log-service",
+            "notification-service",
+            "service-management-service",
+            "servicemanagementservice"
+        );
+        for (String name : defaults) {
+            if (appServiceRepository.findByNameIgnoreCase(name).isEmpty()) {
+                AppService svc = new AppService();
+                svc.setId(java.util.UUID.randomUUID());
+                svc.setName(name);
+                svc.setDescription("Auto-seeded system service");
+                svc.setActive(true);
+                svc.setCreatedAt(java.time.LocalDateTime.now());
+                svc.setUpdatedAt(java.time.LocalDateTime.now());
+                appServiceRepository.save(svc);
+                LOGGER.info("Seeded default service: {}", name);
+            }
+        }
     }
 
     public List<ServiceSummaryView> listServices() {
