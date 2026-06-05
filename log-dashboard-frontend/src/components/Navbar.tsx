@@ -206,11 +206,11 @@ export default function Navbar() {
                     {alerts.map((alert, i) => (
                       <div
                         key={`${alert.service}-${alert.timestamp ?? i}`}
-                        className={`header-notif-row ${alert.severity === 'CRITICAL' ? 'notif-critical' : 'notif-warning'}`}
+                        className={`header-notif-row ${alert.severity === 'CRITICAL' || alert.severity === 'HIGH' ? 'notif-critical' : 'notif-warning'}`}
                       >
                         <div className="header-notif-top">
                           <span className="header-notif-service">{alert.service}</span>
-                          <span className={`tag ${alert.severity === 'CRITICAL' ? 'tag-error' : 'tag-warn'}`}>
+                          <span className={`tag ${alert.severity === 'CRITICAL' || alert.severity === 'HIGH' ? 'tag-error' : 'tag-warn'}`}>
                             {alert.severity}
                           </span>
                         </div>

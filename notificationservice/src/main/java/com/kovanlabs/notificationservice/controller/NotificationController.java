@@ -31,6 +31,8 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -82,7 +84,9 @@ public class NotificationController {
     }
 
     @GetMapping("/alerts")
-    public ResponseEntity<Map<String, List<AlertItemView>>> getAlerts() {
+    public ResponseEntity<Map<String, List<AlertItemView>>> getAlerts(
+            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestHeader(value = "X-User-Services", required = false) String userServices) {
         List<Alert> alerts = alertRepository.findAll();
         Map<String, List<AlertItemView>> grouped = alerts.stream()
                 .map(a -> new AlertItemView(
@@ -93,6 +97,23 @@ public class NotificationController {
                         a.getTimestamp()
                 ))
                 .collect(Collectors.groupingBy(AlertItemView::service));
+
+        // Apply RBAC filtering only if X-User-Role is present and it is DEV (non-ADMIN)
+        if (userRole != null && !"ADMIN".equalsIgnoreCase(userRole)) {
+            List<String> allowedServices = new ArrayList<>();
+            if (userServices != null && !userServices.isBlank()) {
+                allowedServices = Arrays.stream(userServices.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isBlank())
+                        .map(String::toLowerCase)
+                        .toList();
+            }
+            final List<String> services = allowedServices;
+            grouped = grouped.entrySet().stream()
+                    .filter(entry -> services.stream().anyMatch(s -> s.equalsIgnoreCase(entry.getKey())))
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        }
+
         return ResponseEntity.ok(grouped);
     }
 

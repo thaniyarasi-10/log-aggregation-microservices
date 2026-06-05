@@ -215,7 +215,7 @@ _ERROR_KB = {
         "after a service crash or rolling restart.",
         [
             "Cross-reference the timestamp with recent deployments, pod restarts, or "
-            "crash events: kubectl describe pod <log-controller-pod>.",
+            "crash events: kubectl describe pod &lt;log-controller-pod&gt;.",
             "Check log-controller-service buffer config (max_buffer_size, flush_interval) — "
             "large buffers produce bulk flushes on restart.",
             "Review container restart history to confirm whether a crash triggered the flush.",
@@ -228,9 +228,9 @@ _ERROR_KB = {
         "Common causes: broker downtime, network partition, or misconfigured topic/ACL.",
         [
             "Verify broker availability: "
-            "kafka-broker-api-versions.sh --bootstrap-server <host>:9092",
+            "kafka-broker-api-versions.sh --bootstrap-server &lt;host&gt;:9092",
             "Inspect consumer group lag: kafka-consumer-groups.sh "
-            "--bootstrap-server <host>:9092 --describe --group <group-name>",
+            "--bootstrap-server &lt;host&gt;:9092 --describe --group &lt;group-name&gt;",
             "Review broker logs for leader election failures or ISR shrinkage.",
             "If lag is high, increase consumer instances or tune max.poll.records "
             "and max.poll.interval.ms in consumer config.",
@@ -243,7 +243,7 @@ _ERROR_KB = {
         "Common causes: crashed downstream service, wrong hostname/port in config, "
         "or a blocked firewall / NetworkPolicy rule.",
         [
-            "Verify the target is reachable from the pod: nc -zv <host> <port>",
+            "Verify the target is reachable from the pod: nc -zv &lt;host&gt; &lt;port&gt;",
             "Confirm env vars / ConfigMaps for host and port are correct in the "
             "failing service Deployment.",
             "Check Kubernetes NetworkPolicy and cloud security groups for ingress/egress "
@@ -316,7 +316,7 @@ _ERROR_KB = {
             "GET /_cat/shards?h=index,shard,state,unassigned.reason&s=state",
             "Check JVM heap: GET /_nodes/stats/jvm — if heap > 85%, increase node "
             "memory or reduce index count.",
-            "Look for mapping conflicts: GET /<index>/_mapping and compare field types "
+            "Look for mapping conflicts: GET /&lt;index&gt;/_mapping and compare field types "
             "across index versions.",
             "If disk is full, add nodes or delete old indices via an ILM policy.",
         ],
@@ -326,7 +326,7 @@ _ERROR_KB = {
         "being initialised, or optional data was assumed to be present.",
         [
             "Locate the full stack trace in the logs to identify the exact class and line.",
-            "Add null checks or use Optional<> / Optional.ofNullable() before "
+            "Add null checks or use Optional&lt;&gt; / Optional.ofNullable() before "
             "dereferencing the object.",
             "Add input validation at the API / service boundary so null values are "
             "rejected early with a descriptive error.",
@@ -338,7 +338,7 @@ _ERROR_KB = {
         "collection or cache, or an undersized heap.",
         [
             "Capture a heap dump on the next occurrence: "
-            "jmap -dump:live,format=b,file=heap.hprof <pid>",
+            "jmap -dump:live,format=b,file=heap.hprof &lt;pid&gt;",
             "Analyse with Eclipse MAT or VisualVM to find the largest retained "
             "object graph.",
             "Look for unbounded collections (Maps, Lists) that grow without eviction.",

@@ -103,6 +103,76 @@ class NotificationControllerTest {
     }
 
     @Test
+    void getAlerts_withDevRoleAndAllowedService_returnsFilteredAlerts() throws Exception {
+        Alert alert1 = new Alert();
+        alert1.setService("payment-service");
+        alert1.setMessage("DB timeout");
+        alert1.setCount(4);
+        alert1.setSeverity("CRITICAL");
+        alert1.setTimestamp(LocalDateTime.now());
+
+        Alert alert2 = new Alert();
+        alert2.setService("auth-service");
+        alert2.setMessage("Unauthorized attempt");
+        alert2.setCount(2);
+        alert2.setSeverity("WARNING");
+        alert2.setTimestamp(LocalDateTime.now());
+
+        when(alertRepository.findAll()).thenReturn(List.of(alert1, alert2));
+
+        mockMvc.perform(get("/api/notifications/alerts")
+                        .header("X-User-Role", "DEV")
+                        .header("X-User-Services", "payment-service"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.['payment-service'][0].message", equalTo("DB timeout")))
+                .andExpect(jsonPath("$.['auth-service']").doesNotExist());
+    }
+
+    @Test
+    void getAlerts_withDevRoleAndDisallowedService_filtersOut() throws Exception {
+        Alert alert1 = new Alert();
+        alert1.setService("payment-service");
+        alert1.setMessage("DB timeout");
+        alert1.setCount(4);
+        alert1.setSeverity("CRITICAL");
+        alert1.setTimestamp(LocalDateTime.now());
+
+        when(alertRepository.findAll()).thenReturn(List.of(alert1));
+
+        mockMvc.perform(get("/api/notifications/alerts")
+                        .header("X-User-Role", "DEV")
+                        .header("X-User-Services", "auth-service"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.['payment-service']").doesNotExist());
+    }
+
+    @Test
+    void getAlerts_withAdminRole_returnsAllAlerts() throws Exception {
+        Alert alert1 = new Alert();
+        alert1.setService("payment-service");
+        alert1.setMessage("DB timeout");
+        alert1.setCount(4);
+        alert1.setSeverity("CRITICAL");
+        alert1.setTimestamp(LocalDateTime.now());
+
+        Alert alert2 = new Alert();
+        alert2.setService("auth-service");
+        alert2.setMessage("Unauthorized attempt");
+        alert2.setCount(2);
+        alert2.setSeverity("WARNING");
+        alert2.setTimestamp(LocalDateTime.now());
+
+        when(alertRepository.findAll()).thenReturn(List.of(alert1, alert2));
+
+        mockMvc.perform(get("/api/notifications/alerts")
+                        .header("X-User-Role", "ADMIN")
+                        .header("X-User-Services", "payment-service"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.['payment-service'][0].message", equalTo("DB timeout")))
+                .andExpect(jsonPath("$.['auth-service'][0].message", equalTo("Unauthorized attempt")));
+    }
+
+    @Test
     void createJiraStoryPost_returnsDetails() throws Exception {
         com.kovanlabs.notificationservice.dto.JiraStoryResponse response = new com.kovanlabs.notificationservice.dto.JiraStoryResponse("CREATED", "Created successfully", "PAY-12", "http://jira/PAY-12");
         when(jiraStoryService.createJiraStoryForAlert("alert-123")).thenReturn(response);
