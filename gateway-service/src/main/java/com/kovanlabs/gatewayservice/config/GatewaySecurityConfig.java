@@ -53,6 +53,7 @@ public class GatewaySecurityConfig {
                         .pathMatchers(HttpMethod.OPTIONS).permitAll()
                         .pathMatchers("/actuator/health", "/actuator/info").permitAll()
                         .pathMatchers("/api/auth/**", "/oauth2/**", "/login/**", "/favicon.ico").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/api/alerts/*/jira").permitAll()
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .bearerTokenConverter(bearerTokenConverter())

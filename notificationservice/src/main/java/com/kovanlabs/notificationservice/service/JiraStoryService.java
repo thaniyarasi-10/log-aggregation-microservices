@@ -9,12 +9,17 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.kovanlabs.notificationservice.dto.AlertRequest;
 import com.kovanlabs.notificationservice.dto.JiraStoryResponse;
+import com.kovanlabs.notificationservice.model.Alert;
 import com.kovanlabs.notificationservice.model.JiraConfiguration;
 import com.kovanlabs.notificationservice.model.JiraStory;
 import com.kovanlabs.notificationservice.model.UserJiraMapping;
+import com.kovanlabs.notificationservice.repository.AlertRepository;
 import com.kovanlabs.notificationservice.repository.JiraConfigurationRepository;
 import com.kovanlabs.notificationservice.repository.JiraStoryRepository;
 import com.kovanlabs.notificationservice.repository.UserJiraMappingRepository;
@@ -30,6 +35,7 @@ public class JiraStoryService {
     private final PriorityDeadlineResolver priorityDeadlineResolver;
     private final JiraStoryTemplateBuilder templateBuilder;
     private final JiraClient jiraClient;
+    private final AlertRepository alertRepository;
 
     public JiraStoryService(
             JiraStoryRepository jiraStoryRepository,
@@ -37,14 +43,17 @@ public class JiraStoryService {
             JiraConfigurationRepository jiraConfigurationRepository,
             PriorityDeadlineResolver priorityDeadlineResolver,
             JiraStoryTemplateBuilder templateBuilder,
-            JiraClient jiraClient) {
+            JiraClient jiraClient,
+            AlertRepository alertRepository) {
         this.jiraStoryRepository = jiraStoryRepository;
         this.userJiraMappingRepository = userJiraMappingRepository;
         this.jiraConfigurationRepository = jiraConfigurationRepository;
         this.priorityDeadlineResolver = priorityDeadlineResolver;
         this.templateBuilder = templateBuilder;
         this.jiraClient = jiraClient;
+        this.alertRepository = alertRepository;
     }
+
 
     public JiraStoryResponse triggerJiraStoryCreation(AlertRequest request) {
         if (request == null || request.alertId() == null || request.alertId().isBlank()) {
@@ -171,5 +180,154 @@ public class JiraStoryService {
 
             return new JiraStoryResponse("FAILED", "Jira story creation failed: " + ex.getMessage(), null, null);
         }
+    }
+
+    @Transactional
+    public JiraStoryResponse createJiraStoryForAlert(String alertIdString) {
+        if (alertIdString == null || alertIdString.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Alert ID is required");
+        }
+
+        UUID alertId;
+        try {
+            alertId = UUID.fromString(alertIdString.trim());
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid Alert ID format: " + alertIdString);
+        }
+
+        // 1. Validate alert exists
+        Alert alert = alertRepository.findById(alertId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Alert not found with ID: " + alertIdString));
+
+        // 2. Prevent duplicate ticket creation
+        List<JiraStory> existingStories = jiraStoryRepository.findByAlertId(alertIdString.trim());
+        Optional<JiraStory> successfulStory = existingStories.stream()
+                .filter(s -> s.getJiraIssueKey() != null && !s.getJiraIssueKey().isBlank() && !"FAILED".equalsIgnoreCase(s.getStatus()))
+                .findFirst();
+        if (successfulStory.isPresent()) {
+            JiraStory story = successfulStory.get();
+            LOGGER.info("Jira Story already exists for alertId {}: {}", alertIdString, story.getJiraIssueKey());
+            return new JiraStoryResponse("SUCCESS", "Jira story already exists for this alert.", story.getJiraIssueKey(), story.getJiraIssueUrl());
+        }
+
+        // 3. Fetch the active system-wide Jira configuration
+        Optional<JiraConfiguration> configOpt = jiraConfigurationRepository.findFirstByActiveTrue();
+        if (configOpt.isEmpty()) {
+            String errorMsg = "No active Jira configuration found. Cannot automate story creation.";
+            LOGGER.error(errorMsg);
+            return new JiraStoryResponse("FAILED", errorMsg, null, null);
+        }
+        JiraConfiguration config = configOpt.get();
+
+        // Calculate due date
+        LocalDateTime dueDate = priorityDeadlineResolver.resolveDueDate(alert.getSeverity());
+        String formattedDueDate = dueDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+
+        // Initialize JiraStory DB record
+        JiraStory story = new JiraStory();
+        story.setId(UUID.randomUUID());
+        story.setAlertId(alertIdString.trim());
+        story.setServiceName(alert.getService());
+        story.setPriority(alert.getSeverity() != null ? alert.getSeverity().toUpperCase() : "LOW");
+        story.setDueDate(dueDate);
+        story.setCreatedAt(LocalDateTime.now());
+        story.setUpdatedAt(LocalDateTime.now());
+
+        // 4. Resolve the Assignee
+        List<Object[]> owners = userJiraMappingRepository.findOwnersByServiceNameIgnoreCase(alert.getService());
+        UserJiraMapping assigneeMapping = null;
+        for (Object[] owner : owners) {
+            String ownerUserId = (String) owner[0];
+            Optional<UserJiraMapping> mappingOpt = userJiraMappingRepository.findByUserId(ownerUserId);
+            if (mappingOpt.isPresent() && mappingOpt.get().isActive()) {
+                assigneeMapping = mappingOpt.get();
+                break;
+            }
+        }
+
+        String assigneeAccountId = null;
+        String assigneeDisplayName = null;
+        if (assigneeMapping != null) {
+            assigneeAccountId = assigneeMapping.getJiraAccountId();
+            assigneeDisplayName = assigneeMapping.getJiraDisplayName();
+            LOGGER.info("Jira story for service '{}' assigned to owner '{}'", alert.getService(), assigneeDisplayName);
+        } else {
+            LOGGER.warn("No active Jira mapping found for service owners of service: {}. Fallback to creating ticket unassigned.", alert.getService());
+        }
+
+        story.setJiraAssigneeAccountId(assigneeAccountId);
+        story.setJiraAssigneeName(assigneeDisplayName);
+
+        // 5. Generate summary and description
+        AlertRequest jiraRequest = new AlertRequest(
+                alertIdString.trim(),
+                alert.getMessage() != null ? alert.getMessage() : "Error Triggered",
+                alert.getService() != null ? alert.getService() : "Unknown Service",
+                alert.getSeverity() != null ? alert.getSeverity().toUpperCase() : "LOW",
+                alert.getTimestamp().toString(),
+                alert.getMessage(), // alertRule
+                "N/A", // observedValue
+                "N/A", // threshold
+                "N/A", // timeWindow
+                alert.getCount(), // errorCount
+                alert.getMessage(), // topErrors
+                "N/A" // alertUrl
+        );
+
+        String summary = templateBuilder.buildSummary(jiraRequest);
+        String description = templateBuilder.buildDescription(jiraRequest);
+
+        try {
+            // 6. Create issue via JiraClient
+            JiraClient.JiraCreateIssueResponse jiraResponse = jiraClient.createStory(
+                    config.getJiraBaseUrl(),
+                    config.getJiraApiToken(),
+                    config.getJiraEmail(),
+                    config.getJiraProjectKey(),
+                    summary,
+                    description,
+                    assigneeAccountId,
+                    formattedDueDate
+            );
+
+            // Construct browse URL
+            String baseUrl = config.getJiraBaseUrl().trim();
+            if (baseUrl.endsWith("/")) {
+                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+            }
+            String issueUrl = baseUrl + "/browse/" + jiraResponse.key();
+
+            // 7. Store success response
+            story.setJiraIssueId(jiraResponse.id());
+            story.setJiraIssueKey(jiraResponse.key());
+            story.setJiraIssueUrl(issueUrl);
+            story.setStatus("OPEN");
+            story.setUpdatedAt(LocalDateTime.now());
+            jiraStoryRepository.save(story);
+
+            LOGGER.info("Successfully created Jira Story {} for alertId {}", jiraResponse.key(), alertIdString);
+            return new JiraStoryResponse("CREATED", "Jira Story created successfully", jiraResponse.key(), issueUrl);
+
+        } catch (Exception ex) {
+            LOGGER.error("Failed to create Jira Story for alertId {}: {}", alertIdString, ex.getMessage(), ex);
+
+            // Store failed creation attempt
+            story.setStatus("FAILED");
+            story.setUpdatedAt(LocalDateTime.now());
+            jiraStoryRepository.save(story);
+
+            return new JiraStoryResponse("FAILED", "Jira story creation failed: " + ex.getMessage(), null, null);
+        }
+    }
+
+    public JiraStory getJiraStoryByAlertId(String alertId) {
+        if (alertId == null || alertId.isBlank()) {
+            return null;
+        }
+        List<JiraStory> stories = jiraStoryRepository.findByAlertId(alertId.trim());
+        return stories.stream()
+                .filter(s -> s.getJiraIssueKey() != null && !s.getJiraIssueKey().isBlank() && !"FAILED".equalsIgnoreCase(s.getStatus()))
+                .findFirst()
+                .orElse(null);
     }
 }

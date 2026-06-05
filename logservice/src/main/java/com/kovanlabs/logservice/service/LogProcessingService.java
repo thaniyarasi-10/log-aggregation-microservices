@@ -31,6 +31,7 @@ public class LogProcessingService {
     private final RedisLogService redisLogService;
     private final WebSocketSessionTracker sessionTracker;
     private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationServiceClient notificationServiceClient;
     private final ObjectMapper objectMapper;
 
     public LogProcessingService(ElasticSearchService elasticSearchService,
@@ -38,13 +39,15 @@ public class LogProcessingService {
                                 ServiceApprovalClient serviceApprovalClient,
                                 RedisLogService redisLogService,
                                 WebSocketSessionTracker sessionTracker,
-                                SimpMessagingTemplate messagingTemplate) {
+                                SimpMessagingTemplate messagingTemplate,
+                                NotificationServiceClient notificationServiceClient) {
         this.elasticSearchService = elasticSearchService;
         this.mongoLogEventRepository = mongoLogEventRepository;
         this.serviceApprovalClient = serviceApprovalClient;
         this.redisLogService = redisLogService;
         this.sessionTracker = sessionTracker;
         this.messagingTemplate = messagingTemplate;
+        this.notificationServiceClient = notificationServiceClient;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -77,8 +80,10 @@ public class LogProcessingService {
             mongoLogEventRepository.save(logEvent);
             boolean esSaved = elasticSearchService.save(logEvent);
 
-            if (logEvent.getLevel() != null && "ERROR".equalsIgnoreCase(logEvent.getLevel().trim())) {
+            String level = logEvent.getLevel();
+            if (level != null && ("ERROR".equalsIgnoreCase(level.trim()) || "CRITICAL".equalsIgnoreCase(level.trim()) || "FATAL".equalsIgnoreCase(level.trim()))) {
                 redisLogService.saveLatestError(new LogDto(logEvent));
+                notificationServiceClient.sendAlert(logEvent.getService(), logEvent.getMessage(), level);
             }
             
             if (esSaved) {

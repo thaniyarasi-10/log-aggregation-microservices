@@ -1,5 +1,8 @@
 package com.kovanlabs.notificationservice.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -16,11 +19,17 @@ import com.kovanlabs.notificationservice.dto.AlertNotificationRequest;
 import com.kovanlabs.notificationservice.dto.NotificationPreferenceRequest;
 import com.kovanlabs.notificationservice.dto.NotificationPreferenceView;
 import com.kovanlabs.notificationservice.dto.AlertItemView;
+import com.kovanlabs.notificationservice.dto.JiraStoryResponse;
 import com.kovanlabs.notificationservice.model.Alert;
 import com.kovanlabs.notificationservice.model.NotificationPreference;
 import com.kovanlabs.notificationservice.repository.AlertRepository;
 import com.kovanlabs.notificationservice.service.AlertNotificationService;
 import com.kovanlabs.notificationservice.service.NotificationPreferenceService;
+import com.kovanlabs.notificationservice.service.JiraStoryService;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -29,17 +38,22 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/notifications")
 public class NotificationController {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(NotificationController.class);
+
     private final NotificationPreferenceService preferenceService;
     private final AlertNotificationService alertNotificationService;
     private final AlertRepository alertRepository;
+    private final JiraStoryService jiraStoryService;
 
     public NotificationController(
             NotificationPreferenceService preferenceService,
             AlertNotificationService alertNotificationService,
-            AlertRepository alertRepository) {
+            AlertRepository alertRepository,
+            JiraStoryService jiraStoryService) {
         this.preferenceService = preferenceService;
         this.alertNotificationService = alertNotificationService;
         this.alertRepository = alertRepository;
+        this.jiraStoryService = jiraStoryService;
     }
 
     @GetMapping("/preferences")
@@ -87,5 +101,36 @@ public class NotificationController {
                 pref.isEmailEnabled(),
                 pref.getCreatedAt(),
                 pref.getUpdatedAt());
+    }
+
+    @PostMapping("/alerts/{alertId}/jira")
+    public ResponseEntity<JiraStoryResponse> createJiraStoryPost(@PathVariable("alertId") String alertId) {
+        JiraStoryResponse response = jiraStoryService.createJiraStoryForAlert(alertId);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/alerts/{alertId}/jira")
+    public ResponseEntity<Void> createJiraStoryGetRedirect(@PathVariable("alertId") String alertId) {
+        LOGGER.info("GET endpoint /alerts/{}/jira hit, alertId received: {}", alertId, alertId);
+        try {
+            LOGGER.info("Triggering Jira story creation/lookup for alertId: {}", alertId);
+            JiraStoryResponse response = jiraStoryService.createJiraStoryForAlert(alertId);
+            LOGGER.info("Jira story action result for alertId {}: status={}, message={}", alertId, response.status(), response.message());
+            
+            if ("SUCCESS".equalsIgnoreCase(response.status()) || "CREATED".equalsIgnoreCase(response.status())) {
+                LOGGER.info("Redirect target URL for alertId {}: {}", alertId, response.jiraIssueUrl());
+                return ResponseEntity.status(HttpStatus.FOUND)
+                        .header(HttpHeaders.LOCATION, response.jiraIssueUrl())
+                        .build();
+            } else {
+                LOGGER.error("Jira story creation failed for alertId {}: {}", alertId, response.message());
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create Jira story: " + response.message());
+            }
+        } catch (ResponseStatusException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            LOGGER.error("Jira story creation exception for alertId {}: {}", alertId, ex.getMessage(), ex);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create Jira story: " + ex.getMessage());
+        }
     }
 }

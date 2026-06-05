@@ -12,9 +12,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.kovanlabs.servicemanagementservice.dto.rbac.AssignPermissionRequest;
 import com.kovanlabs.servicemanagementservice.dto.rbac.AssignRoleRequest;
+import com.kovanlabs.servicemanagementservice.dto.rbac.UserSummaryView;
 import com.kovanlabs.servicemanagementservice.model.AppPermission;
 import com.kovanlabs.servicemanagementservice.model.AppRole;
-import com.kovanlabs.servicemanagementservice.model.AppUser;
 import com.kovanlabs.servicemanagementservice.service.RbacAdminService;
 
 @RestController
@@ -28,8 +28,26 @@ public class RbacController {
     }
 
     @GetMapping("/users")
-    public ResponseEntity<List<AppUser>> users() {
+    public ResponseEntity<List<UserSummaryView>> users() {
         return ResponseEntity.ok(rbacAdminService.users());
+    }
+
+    @PostMapping("/users")
+    public ResponseEntity<UserSummaryView> createUser(@RequestBody UserSummaryView request) {
+        return ResponseEntity.status(201).body(rbacAdminService.createUser(request));
+    }
+
+    @PostMapping("/users/{userId}")
+    public ResponseEntity<UserSummaryView> updateUser(
+            @PathVariable("userId") String userId,
+            @RequestBody UserSummaryView request) {
+        return ResponseEntity.ok(rbacAdminService.updateUser(userId, request));
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/users/{userId}")
+    public ResponseEntity<Void> deleteUser(@PathVariable("userId") String userId) {
+        rbacAdminService.deleteUser(userId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/roles")

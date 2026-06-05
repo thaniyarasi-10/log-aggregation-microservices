@@ -3,7 +3,10 @@ package com.kovanlabs.logservice.model;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
+
+import java.time.Instant;
 
 @Document(collection = "logs")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -28,6 +31,10 @@ public class LogEvent {
     private Object tags;
     private String project;
     private LogCaller caller;
+
+
+    @Indexed(expireAfterSeconds = 1296000) // 15 days
+    private Instant ingestedAt = Instant.now();
 
     public LogEvent() {}
 
