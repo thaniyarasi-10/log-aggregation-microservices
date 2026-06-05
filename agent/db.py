@@ -6,7 +6,7 @@ from pymongo import MongoClient
 from pymongo.collection import Collection
 import os
 
-MONGO_URI = os.getenv("MONGO_URI")
+MONGO_URI = os.getenv("MONGO_URI") or "mongodb+srv://thaniyarasik:Th%40ni2005@cluster0.37wfqrt.mongodb.net/logs_db?appName=Cluster0"
 
 DB_NAME = "logs_db"
 COLLECTION_NAME = "logs"
@@ -65,6 +65,7 @@ def fetch_logs(
     services: list[str] | None,
     start: datetime | None = None,
     end: datetime | None = None,
+    limit: int | None = 1000,
 ) -> list[dict[str, Any]]:
     """
     Fetch logs from MongoDB scoped by role and optionally by time range.
@@ -119,13 +120,22 @@ def fetch_logs(
     # ── Apply time range filter ───────────────────────────────────────
     if start is not None:
         # Ensure timezone-aware
-        if start.tzinfo is None:
-            start = start.replace(tzinfo=timezone.utc)
-        effective_end = end if end is not None else datetime.now(timezone.utc)
-        if effective_end.tzinfo is None:
-            effective_end = effective_end.replace(tzinfo=timezone.utc)
+        if isinstance(start, datetime):
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            start_str = start.isoformat().replace("+00:00", "Z")
+        else:
+            start_str = str(start)
 
-        time_filter: dict[str, Any] = {"$gte": start, "$lte": effective_end}
+        effective_end = end if end is not None else datetime.now(timezone.utc)
+        if isinstance(effective_end, datetime):
+            if effective_end.tzinfo is None:
+                effective_end = effective_end.replace(tzinfo=timezone.utc)
+            effective_end_str = effective_end.isoformat().replace("+00:00", "Z")
+        else:
+            effective_end_str = str(effective_end)
+
+        time_filter: dict[str, Any] = {"$gte": start_str, "$lte": effective_end_str}
 
         if "$or" in query:
             # Wrap existing $or with $and so we can add timestamp
@@ -133,8 +143,12 @@ def fetch_logs(
         else:
             query["timestamp"] = time_filter
 
-    cursor = collection.find(query, projection).sort("timestamp", 1)
-    return [_serialize_document(_normalize_document_fields(document)) for document in cursor]
+    cursor = collection.find(query, projection).sort("timestamp", -1)
+    if limit is not None:
+        cursor = cursor.limit(limit)
+    results = [_serialize_document(_normalize_document_fields(document)) for document in cursor]
+    results.reverse()
+    return results
 
 
 fetchLogs = fetch_logs

@@ -302,27 +302,7 @@ public class ElasticRepository {
             }
 
             if (message != null && !message.isBlank()) {
-                String trimmed = message.trim();
-                boolQueryBuilder.must(
-                    QueryBuilders.bool(inner -> inner
-                        .should(s -> s
-                            .match(m -> m
-                                .field("message")
-                                .query(trimmed)
-                                .operator(co.elastic.clients.elasticsearch._types.query_dsl.Operator.Or)
-                                .minimumShouldMatch("1")
-                            )
-                        )
-                        .should(s -> s
-                            .matchPhrase(mp -> mp
-                                .field("message")
-                                .query(trimmed)
-                                .boost(2.0f)
-                            )
-                        )
-                        .minimumShouldMatch("1")
-                    )
-                );
+                boolQueryBuilder.must(buildMessageQuery(message.trim()));
             }
 
             if (from != null || to != null) {
@@ -433,27 +413,7 @@ public class ElasticRepository {
             }
 
             if (message != null && !message.isBlank()) {
-                String trimmed = message.trim();
-                boolQueryBuilder.must(
-                    QueryBuilders.bool(inner -> inner
-                        .should(s -> s
-                            .match(m -> m
-                                .field("message")
-                                .query(trimmed)
-                                .operator(co.elastic.clients.elasticsearch._types.query_dsl.Operator.Or)
-                                .minimumShouldMatch("1")
-                            )
-                        )
-                        .should(s -> s
-                            .matchPhrase(mp -> mp
-                                .field("message")
-                                .query(trimmed)
-                                .boost(2.0f)
-                            )
-                        )
-                        .minimumShouldMatch("1")
-                    )
-                );
+                boolQueryBuilder.must(buildMessageQuery(message.trim()));
             }
 
             if (from != null || to != null) {
@@ -698,21 +658,7 @@ public class ElasticRepository {
         }
 
         if (message != null && !message.isBlank()) {
-            String trimmed = message.trim();
-            filters.add(QueryBuilders.bool(inner -> inner
-                    .should(s -> s.match(m -> m
-                            .field("message")
-                            .query(trimmed)
-                            .operator(co.elastic.clients.elasticsearch._types.query_dsl.Operator.Or)
-                            .minimumShouldMatch("1")
-                    ))
-                    .should(s -> s.matchPhrase(mp -> mp
-                            .field("message")
-                            .query(trimmed)
-                            .boost(2.0f)
-                    ))
-                    .minimumShouldMatch("1")
-            ));
+            filters.add(buildMessageQuery(message.trim()));
         }
 
         buildAccessFilter(accessContext).ifPresent(filters::add);
@@ -1192,6 +1138,26 @@ public class ElasticRepository {
             LOGGER.error("Failed to calculate alerts from Elasticsearch: {}", e.getMessage(), e);
             return new HashMap<>();
         }
+    }
+
+    Query buildMessageQuery(String message) {
+        String[] words = message.split("\\s+");
+        List<Query> wordQueries = new ArrayList<>();
+        for (String word : words) {
+            if (!word.isBlank()) {
+                final String searchWord = word.toLowerCase(java.util.Locale.ROOT);
+                Query q = QueryBuilders.bool(b -> b
+                        .should(s1 -> s1.match(m -> m.field("message").query(searchWord)))
+                        .should(s2 -> s2.wildcard(w -> w.field("message").value("*" + searchWord + "*").caseInsensitive(true)))
+                        .minimumShouldMatch("1")
+                );
+                wordQueries.add(q);
+            }
+        }
+        if (wordQueries.isEmpty()) {
+            return QueryBuilders.matchAll().build()._toQuery();
+        }
+        return QueryBuilders.bool(b -> b.must(wordQueries));
     }
 
     private <T> SearchResponse<T> executeSearch(SearchRequest request, Class<T> clazz, String operation, Query generatedQuery, AuthenticatedUserContext accessContext, List<String> requestedServices) {
