@@ -27,6 +27,7 @@ import com.kovanlabs.notificationservice.dto.JiraStoryResponse;
 import com.kovanlabs.notificationservice.model.JiraConfiguration;
 import com.kovanlabs.notificationservice.model.JiraStory;
 import com.kovanlabs.notificationservice.model.UserJiraMapping;
+import com.kovanlabs.notificationservice.repository.AlertRepository;
 import com.kovanlabs.notificationservice.repository.JiraConfigurationRepository;
 import com.kovanlabs.notificationservice.repository.JiraStoryRepository;
 import com.kovanlabs.notificationservice.repository.UserJiraMappingRepository;
@@ -40,6 +41,7 @@ class JiraStoryServiceTest {
     @Mock private PriorityDeadlineResolver priorityDeadlineResolver;
     @Mock private JiraStoryTemplateBuilder templateBuilder;
     @Mock private JiraClient jiraClient;
+    @Mock private AlertRepository alertRepository;
 
     private JiraStoryService service;
     private AlertRequest validAlert;
@@ -53,7 +55,8 @@ class JiraStoryServiceTest {
                 jiraConfigurationRepository,
                 priorityDeadlineResolver,
                 templateBuilder,
-                jiraClient
+                jiraClient,
+                alertRepository
         );
 
         validAlert = new AlertRequest(

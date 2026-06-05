@@ -22,12 +22,13 @@ class LogProcessingServiceTest {
     @Mock private RedisLogService redisLogService;
     @Mock private WebSocketSessionTracker sessionTracker;
     @Mock private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
+    @Mock private NotificationServiceClient notificationServiceClient;
 
     @InjectMocks private LogProcessingService service;
 
     @BeforeEach
     void setUp() {
-        service = new LogProcessingService(elasticSearchService, mongoLogEventRepository, serviceApprovalClient, redisLogService, sessionTracker, messagingTemplate);
+        service = new LogProcessingService(elasticSearchService, mongoLogEventRepository, serviceApprovalClient, redisLogService, sessionTracker, messagingTemplate, notificationServiceClient);
         org.mockito.Mockito.lenient().when(serviceApprovalClient.isApproved(any())).thenReturn(true);
     }
 
@@ -63,5 +64,17 @@ class LogProcessingServiceTest {
 
         verify(mongoLogEventRepository, never()).save(any());
         verify(elasticSearchService, never()).save(any());
+    }
+
+    @Test
+    void processLogEvent_errorLog_triggersNotification() {
+        LogEvent event = new LogEvent();
+        event.setService("payment-service");
+        event.setLevel("ERROR");
+        event.setMessage("Database connection failed");
+
+        service.processLogEvent(event);
+
+        verify(notificationServiceClient).sendAlert("payment-service", "Database connection failed", "ERROR");
     }
 }

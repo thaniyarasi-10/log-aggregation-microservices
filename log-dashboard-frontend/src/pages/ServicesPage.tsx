@@ -247,36 +247,74 @@ export default function ServicesPage() {
     }, 0);
   };
 
+  // Statistics calculations
+  const totalServices = services.length;
+  const activeServices = services.filter((s) => s.active !== false && s.status !== 'INACTIVE').length;
+  const pendingRequestsCount = pendingRequests.length;
+  const rejectedRequestsCount = rejectedRequests.length;
+
   return (
     <main className="dashboard-grid">
-      <section className="dashboard-main">
-        <section className="glass-panel table-container">
-          <div className="table-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2>Approved Services</h2>
-            {isAdmin && (
-              <button className="btn" disabled={submitting} onClick={openCreateInline}>
-                Add Service
-              </button>
-            )}
+      <section className="dashboard-main" style={{ padding: '24px', gap: '24px' }}>
+        {/* Page Header */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)' }}>Services Management</h1>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            Monitor service health, define system ownership, and approve access delegation requests.
+          </p>
+        </div>
+
+        {/* Summary Statistics Cards */}
+        <div className="services-stats-row">
+          <div className="services-stat-card">
+            <span className="services-stat-title">Total Services</span>
+            <span className="services-stat-value">{totalServices}</span>
           </div>
-          {(showCreateInline || !isAdmin) && (
-            <div className="admin-form-grid" style={{ borderBottom: '1px solid var(--glass-border)' }}>
-              <input
-                ref={addNameInputRef}
-                className="form-control"
-                placeholder="Service name"
-                value={createForm.name}
-                onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
-              />
-              <input
-                className="form-control"
-                placeholder="Description"
-                value={createForm.description}
-                onChange={(e) => setCreateForm((prev) => ({ ...prev, description: e.target.value }))}
-              />
-              <button className="btn" disabled={submitting} onClick={() => void createService()}>
-                {submitting ? 'Saving...' : (isAdmin ? 'Add Service' : 'Request Service')}
-              </button>
+          <div className="services-stat-card stat-active">
+            <span className="services-stat-title">Active Services</span>
+            <span className="services-stat-value">{activeServices}</span>
+          </div>
+          <div className="services-stat-card stat-pending">
+            <span className="services-stat-title">Pending Requests</span>
+            <span className="services-stat-value">{pendingRequestsCount}</span>
+          </div>
+          <div className="services-stat-card stat-rejected">
+            <span className="services-stat-title">Rejected Requests</span>
+            <span className="services-stat-value">{rejectedRequestsCount}</span>
+          </div>
+        </div>
+
+        {/* Service Form Card for Creation/Request */}
+        {(showCreateInline || !isAdmin) && (
+          <div className="service-form-card">
+            <h3 className="service-form-title">
+              {isAdmin ? 'Add New Service' : 'Request Access to Service'}
+            </h3>
+            <div className="service-form-grid-fields">
+              <div className="service-form-row">
+                <label htmlFor="service-name-input">Service Name</label>
+                <input
+                  id="service-name-input"
+                  ref={addNameInputRef}
+                  className="form-control"
+                  placeholder="e.g. auth-service"
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div className="service-form-row">
+                <label htmlFor="service-desc-input">Description</label>
+                <input
+                  id="service-desc-input"
+                  className="form-control"
+                  placeholder="Provide a brief description of the service"
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm((prev) => ({ ...prev, description: e.target.value }))}
+                />
+              </div>
+            </div>
+            {actionError && <p className="error" style={{ marginTop: '8px' }}>{actionError}</p>}
+            <div className="service-form-actions">
               {isAdmin && (
                 <button
                   className="btn"
@@ -290,214 +328,300 @@ export default function ServicesPage() {
                   Cancel
                 </button>
               )}
+              <button
+                className="btn"
+                style={{ background: 'var(--accent)', color: '#fff', border: 'none' }}
+                disabled={submitting}
+                onClick={() => void createService()}
+              >
+                {submitting ? 'Saving...' : (isAdmin ? 'Create Service' : 'Submit Request')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Services Directory Section */}
+        <section className="glass-panel" style={{ border: 'none', background: 'transparent' }}>
+          <div className="services-section-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px' }}>
+            <h2>Approved Services Directory</h2>
+            {isAdmin && !showCreateInline && (
+              <button className="btn" disabled={submitting} onClick={openCreateInline}>
+                Add Service
+              </button>
+            )}
+          </div>
+
+          {actionError && !showCreateInline && (
+            <div style={{ marginBottom: '16px' }}>
+              <p className="error">{actionError}</p>
             </div>
           )}
-          {actionError && <div className="table-scroll-area" style={{ padding: '1rem' }}><p className="error">{actionError}</p></div>}
-          {loading && <div className="table-scroll-area state-message">Loading services...</div>}
+
+          {loading && <div className="state-message" style={{ padding: '2rem 0' }}>Loading services...</div>}
           {!loading && loadError && (
-            <div className="table-scroll-area state-message">
+            <div className="state-message" style={{ padding: '2rem 0' }}>
               <p className="error">{loadError}</p>
             </div>
           )}
+
           {!loading && !loadError && (
-            <div className="table-scroll-area">
-              <table className="log-table services-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Description</th>
-                <th>Owners (Primary Owner)</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {services.map((service) => (
-                <tr key={service.id || service.name} className="clickable-row">
-                  <td className="services-cell-name">{service.name}</td>
-                  <td className="services-cell-description">{service.description || '-'}</td>
-                  <td className="services-cell-owners">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {service.owners && service.owners.map((owner) => (
-                        <label
-                          key={owner.userId}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            fontSize: '0.8rem',
-                            cursor: isAdmin ? 'pointer' : 'default',
-                            color: 'var(--text-secondary)'
-                          }}
-                        >
-                          <input
-                            type="radio"
-                            name={`primary-owner-${service.name}`}
-                            checked={owner.primary}
-                            disabled={submitting || !isAdmin}
-                            onChange={() => void handleSetPrimaryOwner(service.name, owner.userId)}
-                          />
-                          {owner.username}
-                        </label>
-                      ))}
-                      {(!service.owners || service.owners.length === 0) && (
-                        <span className="tag tag-error">No Owners Assigned</span>
+            <>
+              <div className="services-grid">
+                {services.map((service) => {
+                  const isActive = service.active !== false && service.status !== 'INACTIVE';
+                  const firstLetter = service.name ? service.name.charAt(0) : 'S';
+                  return (
+                    <div key={service.id || service.name} className="service-card">
+                      <div className="service-card-body">
+                        <div className="service-card-header">
+                          <div className="service-card-identity">
+                            <div className="service-card-avatar">{firstLetter}</div>
+                            <div className="service-card-name-wrapper">
+                              <span className="service-card-name" title={service.name}>
+                                {service.name}
+                              </span>
+                              <div>
+                                <span className={`tag ${isActive ? 'tag-debug' : 'tag-unassigned'}`}>
+                                  {service.status || (isActive ? 'ACTIVE' : 'INACTIVE')}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <p className="service-card-description">
+                          {service.description || 'No description provided.'}
+                        </p>
+
+                        <div className="service-card-owners-section">
+                          <h4 className="service-card-owners-title">Owners (Primary Owner)</h4>
+                          <div className="service-card-owners-list">
+                            {service.owners && service.owners.map((owner) => (
+                              <label
+                                key={owner.userId}
+                                className={`service-owner-item ${owner.primary ? 'primary-owner' : ''} ${
+                                  isAdmin ? 'owner-editable' : ''
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  className="service-owner-radio"
+                                  name={`primary-owner-${service.name}`}
+                                  checked={owner.primary}
+                                  disabled={submitting || !isAdmin}
+                                  onChange={() => void handleSetPrimaryOwner(service.name, owner.userId)}
+                                />
+                                <span>
+                                  {owner.username} {owner.primary && '(Primary)'}
+                                </span>
+                              </label>
+                            ))}
+                            {(!service.owners || service.owners.length === 0) && (
+                              <div>
+                                <span className="tag tag-unassigned">Unassigned</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {isAdmin && (
+                        <div className="service-card-footer">
+                          <button
+                            className="btn"
+                            onClick={() => openEdit(service)}
+                            disabled={!service.id}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="btn btn-danger"
+                            onClick={() => void removeService(service.id)}
+                            disabled={!service.id}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       )}
                     </div>
-                  </td>
-                  <td className="services-cell-status">{service.status || (service.active === false ? 'INACTIVE' : 'ACTIVE')}</td>
-                  <td className="services-cell-actions">
-                    {isAdmin ? (
-                      <div className="table-actions">
-                        <button className="btn" onClick={() => openEdit(service)} disabled={!service.id}>
-                          Edit
-                        </button>
+                  );
+                })}
+              </div>
+              {!services.length && (
+                <div className="state-message" style={{ padding: '2rem 0' }}>
+                  No services available
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        {/* Pending Requests Section */}
+        <section className="glass-panel" style={{ border: 'none', background: 'transparent', marginTop: '16px' }}>
+          <div className="services-section-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px' }}>
+            <h2>{isAdmin ? 'Pending Access Requests' : 'My Pending Access Requests'}</h2>
+          </div>
+
+          {requestsLoading && <div className="state-message" style={{ padding: '1rem 0' }}>Loading requests...</div>}
+          {!requestsLoading && requestsError && (
+            <div className="state-message" style={{ padding: '1rem 0' }}>
+              <p className="error">{requestsError}</p>
+            </div>
+          )}
+
+          {!requestsLoading && !requestsError && (
+            <>
+              <div className="requests-grid">
+                {pendingRequests.map((request) => (
+                  <div key={request.id} className="request-card">
+                    <div className="request-card-body">
+                      <div className="request-card-header">
+                        <span className="request-card-title" title={request.serviceName}>
+                          {request.serviceName}
+                        </span>
+                        <span className={getStatusBadgeClass(request.status)}>
+                          {normalizedRequestStatus(request.status)}
+                        </span>
+                      </div>
+
+                      <div className="request-card-meta">
+                        <div className="request-card-meta-row">
+                          <span className="request-card-meta-label">Requested by:</span>
+                          <span className="request-card-meta-value" title={request.requestedByEmail}>
+                            {request.requestedByEmail}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="request-card-description">
+                        {request.description || 'No reason provided.'}
+                      </div>
+                    </div>
+
+                    {isAdmin && (
+                      <div className="request-card-footer">
                         <button
                           className="btn btn-danger"
-                          onClick={() => void removeService(service.id)}
-                          disabled={!service.id}
+                          disabled={submitting}
+                          onClick={() => void rejectRequest(request)}
                         >
-                          Delete
+                          Reject
+                        </button>
+                        <button
+                          className="btn"
+                          style={{ background: 'var(--accent)', color: '#fff', border: 'none' }}
+                          disabled={submitting}
+                          onClick={() => void approveRequest(request)}
+                        >
+                          Approve
                         </button>
                       </div>
-                    ) : (
-                      <span className="muted-cell">-</span>
                     )}
-                  </td>
-                </tr>
-              ))}
-              {!services.length && (
-                <tr>
-                  <td colSpan={5}>No services available</td>
-                </tr>
+                  </div>
+                ))}
+              </div>
+              {!pendingRequests.length && (
+                <div className="state-message" style={{ padding: '1rem 0' }}>
+                  No pending requests found
+                </div>
               )}
-            </tbody>
-              </table>
-            </div>
+            </>
           )}
         </section>
 
-        <section className="glass-panel table-container">
-          <div className="table-header"><h2>{isAdmin ? 'Pending Requests' : 'My Pending Requests'}</h2></div>
-          {requestsLoading && <div className="table-scroll-area state-message">Loading requests...</div>}
-          {!requestsLoading && requestsError && (
-            <div className="table-scroll-area state-message">
-              <p className="error">{requestsError}</p>
-            </div>
-          )}
-          {!requestsLoading && !requestsError && (
-            <div className="table-scroll-area">
-              <table className="log-table">
-                <thead>
-                  <tr>
-                    <th>Service</th>
-                    <th>Requested By</th>
-                    <th>Status</th>
-                    <th>Description</th>
-                    {isAdmin && <th>Actions</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {pendingRequests.map((request) => (
-                    <tr key={request.id}>
-                      <td>{request.serviceName}</td>
-                      <td>{request.requestedByEmail}</td>
-                      <td><span className={getStatusBadgeClass(request.status)}>{normalizedRequestStatus(request.status)}</span></td>
-                      <td>{request.description || '-'}</td>
-                      {isAdmin && (
-                        <td>
-                          <div className="table-actions">
-                            <button
-                              className="btn"
-                              disabled={submitting}
-                              onClick={() => void approveRequest(request)}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              className="btn btn-danger"
-                              disabled={submitting}
-                              onClick={() => void rejectRequest(request)}
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                  {!pendingRequests.length && (
-                    <tr>
-                      <td colSpan={isAdmin ? 5 : 4}>No requests found</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+        {/* Rejected Requests Section */}
+        <section className="glass-panel" style={{ border: 'none', background: 'transparent', marginTop: '16px', marginBottom: '24px' }}>
+          <div className="services-section-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px' }}>
+            <h2>{isAdmin ? 'Rejected Access Requests' : 'My Rejected Access Requests'}</h2>
+          </div>
 
-        <section className="glass-panel table-container">
-          <div className="table-header"><h2>{isAdmin ? 'Rejected Requests' : 'My Rejected Requests'}</h2></div>
-          {requestsLoading && <div className="table-scroll-area state-message">Loading requests...</div>}
+          {requestsLoading && <div className="state-message" style={{ padding: '1rem 0' }}>Loading requests...</div>}
           {!requestsLoading && requestsError && (
-            <div className="table-scroll-area state-message">
+            <div className="state-message" style={{ padding: '1rem 0' }}>
               <p className="error">{requestsError}</p>
             </div>
           )}
+
           {!requestsLoading && !requestsError && (
-            <div className="table-scroll-area">
-              <table className="log-table">
-                <thead>
-                  <tr>
-                    <th>Service</th>
-                    <th>Requested By</th>
-                    <th>Status</th>
-                    <th>Comment</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rejectedRequests.map((request) => (
-                    <tr key={request.id}>
-                      <td>{request.serviceName}</td>
-                      <td>{request.requestedByEmail}</td>
-                      <td><span className={getStatusBadgeClass(request.status)}>{normalizedRequestStatus(request.status)}</span></td>
-                      <td>{request.reviewComment || request.description || '-'}</td>
-                    </tr>
-                  ))}
-                  {!rejectedRequests.length && (
-                    <tr>
-                      <td colSpan={4}>No requests found</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="requests-grid">
+                {rejectedRequests.map((request) => (
+                  <div key={request.id} className="request-card">
+                    <div className="request-card-body">
+                      <div className="request-card-header">
+                        <span className="request-card-title" title={request.serviceName}>
+                          {request.serviceName}
+                        </span>
+                        <span className={getStatusBadgeClass(request.status)}>
+                          {normalizedRequestStatus(request.status)}
+                        </span>
+                      </div>
+
+                      <div className="request-card-meta">
+                        <div className="request-card-meta-row">
+                          <span className="request-card-meta-label">Requested by:</span>
+                          <span className="request-card-meta-value" title={request.requestedByEmail}>
+                            {request.requestedByEmail}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="request-card-description" style={{ borderLeft: '2px solid var(--level-error)' }}>
+                        <strong style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Reason / Rejection Comment:</strong>
+                        <div style={{ marginTop: '4px' }}>
+                          {request.reviewComment || request.description || 'No comment provided.'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {!rejectedRequests.length && (
+                <div className="state-message" style={{ padding: '1rem 0' }}>
+                  No rejected requests found
+                </div>
+              )}
+            </>
           )}
         </section>
       </section>
 
-      <Modal
-        open={Boolean(editService)}
-        title="Edit Service"
-        onClose={() => setEditService(null)}
-      >
-        <div className="admin-form-grid">
-          <input
-            className="form-control"
-            placeholder="Service name"
-            value={editForm.name}
-            onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
-          />
-          <input
-            className="form-control"
-            placeholder="Description"
-            value={editForm.description}
-            onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
-          />
-          <button className="btn" disabled={submitting} onClick={() => void saveEdit()}>
-            {submitting ? 'Saving...' : 'Save Changes'}
-          </button>
+      <Modal open={Boolean(editService)} title="Edit Service" onClose={() => setEditService(null)}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '4px 0' }}>
+          <div className="service-form-row">
+            <label htmlFor="edit-service-name-input" style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Service Name</label>
+            <input
+              id="edit-service-name-input"
+              className="form-control"
+              placeholder="Service name"
+              value={editForm.name}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+            />
+          </div>
+          <div className="service-form-row">
+            <label htmlFor="edit-service-desc-input" style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</label>
+            <input
+              id="edit-service-desc-input"
+              className="form-control"
+              placeholder="Description"
+              value={editForm.description}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
+            />
+          </div>
+          {actionError && <p className="error">{actionError}</p>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', marginTop: '4px' }}>
+            <button className="btn" type="button" onClick={() => setEditService(null)} disabled={submitting}>
+              Cancel
+            </button>
+            <button
+              className="btn"
+              style={{ background: 'var(--accent)', color: '#fff', border: 'none' }}
+              disabled={submitting}
+              onClick={() => void saveEdit()}
+            >
+              {submitting ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
         </div>
       </Modal>
     </main>

@@ -21,6 +21,7 @@ import com.kovanlabs.notificationservice.model.Alert;
 import com.kovanlabs.notificationservice.repository.AlertRepository;
 import com.kovanlabs.notificationservice.service.AlertNotificationService;
 import com.kovanlabs.notificationservice.service.NotificationPreferenceService;
+import com.kovanlabs.notificationservice.service.JiraStoryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,6 +40,7 @@ class NotificationControllerTest {
     @Mock private NotificationPreferenceService preferenceService;
     @Mock private AlertNotificationService alertNotificationService;
     @Mock private AlertRepository alertRepository;
+    @Mock private JiraStoryService jiraStoryService;
 
     @InjectMocks private NotificationController controller;
 
@@ -98,6 +100,27 @@ class NotificationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.['payment-service'][0].message", equalTo("DB timeout")))
                 .andExpect(jsonPath("$.['payment-service'][0].count", equalTo(4)));
+    }
+
+    @Test
+    void createJiraStoryPost_returnsDetails() throws Exception {
+        com.kovanlabs.notificationservice.dto.JiraStoryResponse response = new com.kovanlabs.notificationservice.dto.JiraStoryResponse("CREATED", "Created successfully", "PAY-12", "http://jira/PAY-12");
+        when(jiraStoryService.createJiraStoryForAlert("alert-123")).thenReturn(response);
+
+        mockMvc.perform(post("/api/notifications/alerts/alert-123/jira"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", equalTo("CREATED")))
+                .andExpect(jsonPath("$.jiraIssueKey", equalTo("PAY-12")));
+    }
+
+    @Test
+    void createJiraStoryGetRedirect_successful_redirectsToJira() throws Exception {
+        com.kovanlabs.notificationservice.dto.JiraStoryResponse response = new com.kovanlabs.notificationservice.dto.JiraStoryResponse("SUCCESS", "Jira story already exists", "PAY-12", "http://jira/PAY-12");
+        when(jiraStoryService.createJiraStoryForAlert("alert-123")).thenReturn(response);
+
+        mockMvc.perform(get("/api/notifications/alerts/alert-123/jira"))
+                .andExpect(status().isFound())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Location", "http://jira/PAY-12"));
     }
 
     private NotificationPreference preference(boolean enabled) {

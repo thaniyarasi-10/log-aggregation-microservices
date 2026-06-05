@@ -305,13 +305,27 @@ export const apiService = {
   },
 
   async getServices(): Promise<ServiceRecord[]> {
-    const data = await getByPaths<string[]>(['/api/services']);
+    const data = await getByPaths<any[]>(['/api/services']);
     if (!Array.isArray(data)) {
       return [];
     }
     return data
-      .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
-      .map((name) => ({ name: name.trim().toLowerCase() }));
+      .map((item) => {
+        if (typeof item === 'string') {
+          return { name: item.trim().toLowerCase() };
+        }
+        if (item && typeof item === 'object') {
+          return {
+            id: item.id,
+            name: (item.name || '').trim().toLowerCase(),
+            description: item.description,
+            active: item.active,
+            owners: item.owners
+          };
+        }
+        return null;
+      })
+      .filter((item): item is ServiceRecord => item !== null && item.name.length > 0);
   },
 
   async getAdminServices(): Promise<ServiceRecord[]> {
