@@ -5,6 +5,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -19,10 +20,17 @@ public class ServiceApprovalClient {
         this.restClient = RestClient.builder().baseUrl(baseUrl).build();
     }
 
+    @Cacheable(value = "serviceApprovals", key = "#serviceName.trim().toLowerCase()", condition = "#serviceName != null && !#serviceName.isBlank()")
     public boolean isApproved(String serviceName) {
+        return fetchApprovedFromApi(serviceName);
+    }
+
+    public boolean fetchApprovedFromApi(String serviceName) {
         if (serviceName == null || serviceName.isBlank()) {
             return false;
         }
+
+        LOGGER.info("Calling Service Management API to check approval for service: {}", serviceName);
 
         try {
             Map response = restClient.get()
