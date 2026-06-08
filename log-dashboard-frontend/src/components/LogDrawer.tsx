@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { LogEvent } from '../types';
+import { apiService } from '../services/api';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -158,9 +159,50 @@ function Field({
   );
 }
 
+// ─── syntax highlighter ──────────────────────────────────────────────────────
+const tokenize = (line: string, isJava: boolean): string => {
+  const placeholders: string[] = [];
+  let working = line
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // 1. Strings
+  working = working.replace(/(["'])(?:\\.|[^\\])*?\1/g, (match) => {
+    placeholders.push(`<span class="code-str">${match}</span>`);
+    return `___PH_${placeholders.length - 1}___`;
+  });
+
+  // 2. Comments
+  const commentRegex = isJava ? /(\/\/.*)/g : /(#.*)/g;
+  working = working.replace(commentRegex, (match) => {
+    placeholders.push(`<span class="code-comment">${match}</span>`);
+    return `___PH_${placeholders.length - 1}___`;
+  });
+
+  // 3. Keywords
+  const kwRegex = isJava
+    ? /\b(package|import|public|private|protected|class|interface|enum|extends|implements|new|this|super|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|throws|static|final|void|int|double|float|long|boolean|char|byte|short|null|true|false)\b/g
+    : /\b(import|from|class|def|return|if|elif|else|for|while|break|continue|try|except|finally|raise|assert|and|or|not|in|is|lambda|None|True|False|self)\b/g;
+
+  working = working.replace(kwRegex, '<span class="code-kw">$&</span>');
+
+  // 4. Annotations
+  if (isJava) {
+    working = working.replace(/(@\w+)/g, '<span class="code-ann">$&</span>');
+  }
+
+  // 5. Restore placeholders
+  for (let i = placeholders.length - 1; i >= 0; i--) {
+    working = working.replace(`___PH_${i}___`, placeholders[i]);
+  }
+
+  return working;
+};
+
 // ─── tabs ────────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'json' | 'metadata' | 'raw';
+type Tab = 'overview' | 'source' | 'json' | 'metadata' | 'raw';
 
 // ─── main component ──────────────────────────────────────────────────────────
 
@@ -175,6 +217,13 @@ export default function LogDrawer({ log, onClose }: Props) {
   const drawerRef = useRef<HTMLDivElement>(null);
   const { copied, copy } = useCopy();
 
+  // Source Code Viewer States
+  const [sourceCode, setSourceCode] = useState<string | null>(null);
+  const [sourceFilePath, setSourceFilePath] = useState<string | null>(null);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  const targetLineRef = useRef<HTMLDivElement | null>(null);
+
   // ESC to close
   useEffect(() => {
     if (!log) return;
@@ -187,7 +236,12 @@ export default function LogDrawer({ log, onClose }: Props) {
 
   // Reset tab when a new log is opened
   useEffect(() => {
-    if (log) setTab('overview');
+    if (log) {
+      setTab('overview');
+      setSourceCode(null);
+      setSourceFilePath(null);
+      setSourceError(null);
+    }
   }, [log]);
 
   // Trap focus inside drawer when open
@@ -196,6 +250,45 @@ export default function LogDrawer({ log, onClose }: Props) {
       drawerRef.current.focus();
     }
   }, [log]);
+
+  // Fetch source code when 'source' tab is active
+  const caller = log?.caller;
+  useEffect(() => {
+    if (tab !== 'source' || !log) return;
+    
+    if (!caller || !caller.file) {
+      setSourceError('No source code location details found for this log event.');
+      setSourceCode(null);
+      setSourceFilePath(null);
+      return;
+    }
+
+    setSourceLoading(true);
+    setSourceError(null);
+
+    apiService.fetchSourceCode(log.service, caller.class, caller.file, caller.line)
+      .then((res) => {
+        setSourceCode(res.fileContent);
+        setSourceFilePath(res.filePath);
+        setSourceLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to load source code:', err);
+        const msg = err.response?.data?.message || 'Failed to retrieve source file from backend.';
+        setSourceError(msg);
+        setSourceLoading(false);
+      });
+  }, [tab, log, caller]);
+
+  // Auto-scroll target line into view
+  useEffect(() => {
+    if (tab === 'source' && !sourceLoading && sourceCode && targetLineRef.current) {
+      const timer = setTimeout(() => {
+        targetLineRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [tab, sourceLoading, sourceCode]);
 
   if (!log) return null;
 
@@ -290,17 +383,20 @@ export default function LogDrawer({ log, onClose }: Props) {
 
         {/* ── Tabs ── */}
         <div className="ld-tabs" role="tablist">
-          {(['overview', 'json', 'metadata', 'raw'] as Tab[]).map(t => (
-            <button
-              key={t}
-              role="tab"
-              aria-selected={tab === t}
-              className={`ld-tab${tab === t ? ' ld-tab-active' : ''}`}
-              onClick={() => setTab(t)}
-            >
-              {t.charAt(0).toUpperCase() + t.slice(1)}
-            </button>
-          ))}
+          {(['overview', 'source', 'json', 'metadata', 'raw'] as Tab[]).map(t => {
+            if (t === 'source' && !log.caller) return null;
+            return (
+              <button
+                key={t}
+                role="tab"
+                aria-selected={tab === t}
+                className={`ld-tab${tab === t ? ' ld-tab-active' : ''}`}
+                onClick={() => setTab(t)}
+              >
+                {t === 'source' ? 'Source Code' : t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            );
+          })}
         </div>
 
         {/* ── Tab content ── */}
@@ -323,6 +419,21 @@ export default function LogDrawer({ log, onClose }: Props) {
                   <Field label="Environment" value={log.environment} copied={copied} onCopy={copy} />
                   <Field label="Instance"    value={log.instance}    copied={copied} onCopy={copy} />
                   <Field label="Timestamp"   value={formatTimestamp(ts)} mono copied={copied} onCopy={copy} copyKey="timestamp" />
+                  {log.caller && log.caller.file && (
+                    <div className="ld-field">
+                      <span className="ld-field-label">Source Location</span>
+                      <button 
+                        className="ld-caller-badge"
+                        onClick={() => setTab('source')}
+                        title="View exact source code location"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                          <path d="M10.478 1.647a.5.5 0 1 0-.956-.294l-4 13a.5.5 0 0 0 .956.294l4-13zM4.854 4.146a.5.5 0 0 1 0 .708L1.707 8l3.147 3.146a.5.5 0 0 1-.708.708l-3.5-3.5a.5.5 0 0 1 0-.708l3.5-3.5a.5.5 0 0 1 .708 0zm6.292 0a.5.5 0 0 0 0 .708L14.293 8l-3.147 3.146a.5.5 0 0 0 .708.708l3.5-3.5a.5.5 0 0 0 0-.708l-3.5-3.5a.5.5 0 0 0-.708 0z"/>
+                        </svg>
+                        {log.caller.file}:{log.caller.line}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </section>
 
@@ -363,6 +474,70 @@ export default function LogDrawer({ log, onClose }: Props) {
                   )}
                 </section>
               )}
+            </div>
+          )}
+
+          {/* SOURCE CODE */}
+          {tab === 'source' && (
+            <div className="ld-code-tab animate-fade-in">
+              <div className="ld-code-header">
+                <div className="ld-code-title">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{color: 'var(--accent-color)'}}>
+                    <path d="M10.478 1.647a.5.5 0 1 0-.956-.294l-4 13a.5.5 0 0 0 .956.294l4-13zM4.854 4.146a.5.5 0 0 1 0 .708L1.707 8l3.147 3.146a.5.5 0 0 1-.708.708l-3.5-3.5a.5.5 0 0 1 0-.708l3.5-3.5a.5.5 0 0 1 .708 0zm6.292 0a.5.5 0 0 0 0 .708L14.293 8l-3.147 3.146a.5.5 0 0 0 .708.708l3.5-3.5a.5.5 0 0 0 0-.708l-3.5-3.5a.5.5 0 0 0-.708 0z"/>
+                  </svg>
+                  <span>Source Location</span>
+                </div>
+                <div className="ld-code-filepath">
+                  {sourceFilePath ? sourceFilePath : (caller?.file ? `${log.service}/${caller.file}` : '')}
+                </div>
+              </div>
+
+              <div className="ld-code-viewer-container">
+                {sourceLoading && (
+                  <div className="ld-code-loading">
+                    <div className="ns-spinner" />
+                    <span>Fetching source file...</span>
+                  </div>
+                )}
+
+                {sourceError && (
+                  <div className="ld-code-error-container">
+                    <svg className="ld-code-error-icon" width="48" height="48" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                      <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/>
+                    </svg>
+                    <div className="ld-code-error-title">Source Code Not Available</div>
+                    <div className="ld-code-error-desc">{sourceError}</div>
+                  </div>
+                )}
+
+                {!sourceLoading && !sourceError && sourceCode && (
+                  <div className="ld-code-scroller">
+                    <div className="ld-code-table">
+                      {sourceCode.split(/\r?\n/).map((line, idx) => {
+                        const lineNum = idx + 1;
+                        const isTarget = lineNum === caller?.line;
+                        const isJava = caller?.file?.endsWith('.java') || false;
+                        const highlightedHtml = tokenize(line, isJava);
+
+                        return (
+                          <div 
+                            key={lineNum} 
+                            ref={isTarget ? targetLineRef : undefined}
+                            className={`ld-code-line${isTarget ? ' highlighted' : ''}`}
+                          >
+                            <div className="ld-code-ln">{lineNum}</div>
+                            <div 
+                              className="ld-code-text"
+                              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

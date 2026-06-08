@@ -1,1 +1,14 @@
 **/src/main/resources/application.yaml
+
+# Frontend
+**/node_modules/
+**/.vite/
+dist/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.idea/
+*.iml

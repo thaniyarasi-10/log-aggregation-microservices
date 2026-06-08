@@ -69,7 +69,9 @@ export default function LogsPage() {
 
         if (!isAdmin) {
           const allowed = new Set(allowedServices.map((s) => s.trim().toLowerCase()));
-          names = names.filter((name) => allowed.has(name.toLowerCase()));
+          if (!allowed.has('*')) {
+            names = names.filter((name) => allowed.has(name.toLowerCase()));
+          }
         }
 
         names.sort((a, b) => a.localeCompare(b));

@@ -952,7 +952,7 @@ public class ElasticRepository {
                 .anyMatch(value -> "*".equals(value));
 
         if (hasWildcardAccess) {
-            return Optional.of(noAccessQuery());
+            return Optional.empty();
         }
 
         List<FieldValue> fieldValues = allowedServices.stream()

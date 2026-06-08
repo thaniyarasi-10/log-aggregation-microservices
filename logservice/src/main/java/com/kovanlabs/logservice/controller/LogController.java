@@ -17,6 +17,7 @@ import com.kovanlabs.logservice.model.AlertItemView;
 import com.kovanlabs.logservice.repository.ElasticRepository;
 import com.kovanlabs.logservice.service.LogProcessingService;
 import com.kovanlabs.logservice.service.RedisLogService;
+import com.kovanlabs.logservice.service.SourceCodeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,11 +38,13 @@ public class LogController {
     private final LogProcessingService processingService;
     private final RedisLogService redisLogService;
     private final ElasticRepository elasticRepository;
+    private final SourceCodeService sourceCodeService;
 
-    public LogController(LogProcessingService processingService, RedisLogService redisLogService, ElasticRepository elasticRepository) {
+    public LogController(LogProcessingService processingService, RedisLogService redisLogService, ElasticRepository elasticRepository, SourceCodeService sourceCodeService) {
         this.processingService = processingService;
         this.redisLogService = redisLogService;
         this.elasticRepository = elasticRepository;
+        this.sourceCodeService = sourceCodeService;
     }
 
     @PostMapping
@@ -263,5 +266,26 @@ public class LogController {
 
         Map<String, List<AlertItemView>> alerts = elasticRepository.calculateAlerts(context);
         return ResponseEntity.ok(alerts);
+    }
+
+    @GetMapping("/source-code")
+    public ResponseEntity<?> getSourceCode(
+            @RequestParam("service") String service,
+            @RequestParam(value = "class", required = false) String className,
+            @RequestParam("file") String file,
+            @RequestParam(value = "line", required = false) Integer line) {
+        try {
+            Map<String, Object> source = sourceCodeService.getSourceCode(service, className, file, line);
+            if (source == null) {
+                return ResponseEntity.status(404).body(Map.of("message", "Source file not found"));
+            }
+            return ResponseEntity.ok(source);
+        } catch (SecurityException e) {
+            LOGGER.error("Security violation accessing source code: {}", e.getMessage());
+            return ResponseEntity.status(400).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            LOGGER.error("Failed to retrieve source code: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(Map.of("message", "Failed to retrieve source code: " + e.getMessage()));
+        }
     }
 }

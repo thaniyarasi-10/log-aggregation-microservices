@@ -91,7 +91,7 @@ export function useRealtimeLogs(
       // ── RBAC service guard (defence-in-depth) ──────────────────────────────
       if (!isAdminRef.current) {
         const allowed = allowedServicesRef.current;
-        if (allowed.size > 0) {
+        if (allowed.size > 0 && !allowed.has('*')) {
           const eventService = normalize(event.service || '');
           if (eventService && !allowed.has(eventService)) {
             return false;

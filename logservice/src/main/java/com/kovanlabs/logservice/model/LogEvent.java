@@ -30,6 +30,7 @@ public class LogEvent {
     private String errorDetails;
     private Object tags;
     private String project;
+    private LogCaller caller;
 
 
     @Indexed(expireAfterSeconds = 1296000) // 15 days
@@ -87,4 +88,31 @@ public class LogEvent {
 
     public String getProject() { return project; }
     public void setProject(String project) { this.project = project; }
+
+    public LogCaller getCaller() { return caller; }
+    public void setCaller(LogCaller caller) { this.caller = caller; }
+
+    @JsonProperty("caller_class_name")
+    public void setCallerClassName(String className) {
+        if (this.caller == null) this.caller = new LogCaller();
+        this.caller.setClassName(className);
+    }
+
+    @JsonProperty("caller_method_name")
+    public void setCallerMethodName(String methodName) {
+        if (this.caller == null) this.caller = new LogCaller();
+        this.caller.setMethodName(methodName);
+    }
+
+    @JsonProperty("caller_file_name")
+    public void setCallerFileName(String fileName) {
+        if (this.caller == null) this.caller = new LogCaller();
+        this.caller.setFileName(fileName);
+    }
+
+    @JsonProperty("caller_line_number")
+    public void setCallerLineNumber(Integer lineNumber) {
+        if (this.caller == null) this.caller = new LogCaller();
+        this.caller.setLineNumber(lineNumber);
+    }
 }
