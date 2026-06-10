@@ -12,7 +12,11 @@ public class AppLogKafkaConsumer {
         this.logProcessingService = logProcessingService;
     }
 
-    @KafkaListener(topics = "app-logs", groupId = "logservice-group")
+    @KafkaListener(
+            topics = "app-logs",
+            groupId = "logservice-group",
+            concurrency = "${spring.kafka.listener.concurrency:4}"
+    )
     public void consume(String payload) {
         logProcessingService.process(payload);
     }

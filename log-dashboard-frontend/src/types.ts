@@ -17,6 +17,14 @@ export interface LogEvent {
   responseTime?: number;
   errorCode?: string;
   errorDetails?: string;
+  errorType?: string;
+  possibleCauses?: string[];
+  suggestedFixes?: string[];
+  severity?: string;
+  suggestionGeneratedAt?: string;
+  rootCause?: string;
+  confidence?: number;
+  suggestionSource?: string;
   caller?: {
     class?: string;
     method?: string;

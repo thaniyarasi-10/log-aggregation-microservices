@@ -27,7 +27,10 @@ public class ElasticSearchService {
         try {
 //            LOGGER.debug("Saving log to Elasticsearch via repository - service: {}, timestamp: {}",
 //                    logEvent.getService(), logEvent.getTimestamp());
-            return elasticRepository.save(logEvent);
+//            LOGGER.info("Saving to Elasticsearch");
+            boolean saved = elasticRepository.save(logEvent);
+//            LOGGER.info("Saved to Elasticsearch");
+            return saved;
         } catch (Exception e) {
             LOGGER.error("Failed to save log to Elasticsearch: {}", e.getMessage(), e);
             return false;

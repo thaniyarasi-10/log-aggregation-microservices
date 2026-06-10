@@ -23,12 +23,13 @@ class LogProcessingServiceTest {
     @Mock private WebSocketSessionTracker sessionTracker;
     @Mock private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
     @Mock private NotificationServiceClient notificationServiceClient;
+    @Mock private ErrorSuggestionService errorSuggestionService;
 
     @InjectMocks private LogProcessingService service;
 
     @BeforeEach
     void setUp() {
-        service = new LogProcessingService(elasticSearchService, mongoLogEventRepository, serviceApprovalClient, redisLogService, sessionTracker, messagingTemplate, notificationServiceClient);
+        service = new LogProcessingService(elasticSearchService, mongoLogEventRepository, serviceApprovalClient, redisLogService, sessionTracker, messagingTemplate, notificationServiceClient, errorSuggestionService);
         org.mockito.Mockito.lenient().when(serviceApprovalClient.isApproved(any())).thenReturn(true);
     }
 
@@ -76,5 +77,17 @@ class LogProcessingServiceTest {
         service.processLogEvent(event);
 
         verify(notificationServiceClient).sendAlert("payment-service", "Database connection failed", "ERROR");
+    }
+
+    @Test
+    void processLogEvent_errorLog_triggersErrorSuggestion() {
+        LogEvent event = new LogEvent();
+        event.setService("payment-service");
+        event.setLevel("ERROR");
+        event.setMessage("NullPointerException occurred");
+
+        service.processLogEvent(event);
+
+        verify(errorSuggestionService).attachSuggestion(event);
     }
 }

@@ -1,0 +1,191 @@
+[
+  {
+    "pattern": "NullPointerException|java\\.lang\\.NullPointerException",
+    "isRegex": true,
+    "errorType": "NullPointerException",
+    "possibleCauses": [
+      "Attempted to invoke a method on a null object reference",
+      "Attempted to access or modify a field of a null object reference",
+      "Passed a null argument to a method that rejects null"
+    ],
+    "suggestedFixes": [
+      "Add null check guards (e.g., Objects.requireNonNull or if (obj != null)) before accessing methods or fields",
+      "Verify that instance variables are properly initialized before usage",
+      "Use Optional or default values to safely handle potentially missing data"
+    ],
+    "severity": "MEDIUM",
+    "priority": 10
+  },
+  {
+    "pattern": "OutOfMemoryError|java\\.lang\\.OutOfMemoryError",
+    "isRegex": true,
+    "errorType": "OutOfMemoryError",
+    "possibleCauses": [
+      "Java Heap space is exhausted due to large objects or high object volume",
+      "Metaspace limits exceeded because too many classes were loaded",
+      "Memory leak where objects are referenced indefinitely, preventing garbage collection"
+    ],
+    "suggestedFixes": [
+      "Increase JVM heap memory limit (e.g., use -Xmx2g or -Xmx4g)",
+      "Analyze a heap dump using memory profiling tools (like VisualVM, Eclipse MAT) to find leaks",
+      "Optimize code to process data in streams or chunks instead of loading entire tables/files into memory"
+    ],
+    "severity": "CRITICAL",
+    "priority": 10
+  },
+  {
+    "pattern": "SQLTimeoutException|java\\.sql\\.SQLTimeoutException|query timeout",
+    "isRegex": true,
+    "errorType": "SQLTimeoutException",
+    "possibleCauses": [
+      "Database query took longer than the configured timeout limit",
+      "Heavy load or lock contention on the database server",
+      "Slow database operations due to missing indexes or unoptimized SQL queries"
+    ],
+    "suggestedFixes": [
+      "Optimize the SQL query and verify that proper indexes are applied",
+      "Increase query/transaction timeout parameters in application database configuration if long execution is expected",
+      "Monitor database locks and optimize transaction boundaries to reduce contention"
+    ],
+    "severity": "HIGH",
+    "priority": 10
+  },
+  {
+    "pattern": "Communications link failure|CommunicationsException",
+    "isRegex": true,
+    "errorType": "Communications link failure",
+    "possibleCauses": [
+      "Database server is offline or restarting",
+      "Network disruption between the application service and the database host",
+      "Incorrect JDBC URL connection string, host IP, or port configuration"
+    ],
+    "suggestedFixes": [
+      "Verify that the database server process is active and running",
+      "Check firewall rules and security groups to allow communication between application and database hosts",
+      "Validate JDBC connection details in application properties (e.g., host, port, username)"
+    ],
+    "severity": "HIGH",
+    "priority": 10
+  },
+  {
+    "pattern": "RedisConnectionFailureException|Unable to connect to Redis|Redis connection failed|RedisConnectionException",
+    "isRegex": true,
+    "errorType": "RedisConnectionFailureException",
+    "possibleCauses": [
+      "Redis server is not running",
+      "Redis host or port is incorrect",
+      "Redis container is unavailable",
+      "Network connectivity issue"
+    ],
+    "suggestedFixes": [
+      "Start Redis container",
+      "Verify spring.redis.host",
+      "Verify spring.redis.port",
+      "Check Docker networking"
+    ],
+    "severity": "HIGH",
+    "priority": 10
+  },
+  {
+    "pattern": "ConnectException|java\\.net\\.ConnectException|Connection refused",
+    "isRegex": true,
+    "errorType": "ConnectException",
+    "possibleCauses": [
+      "Target microservice or external API is down or not listening on the specified port",
+      "Network/firewall blocks access to the target host",
+      "Service discovery issue (e.g., Eureka registered a stale or incorrect instance IP/port)"
+    ],
+    "suggestedFixes": [
+      "Check the health and running status of the target microservice",
+      "Verify connectivity to the target port using telnet/nc commands",
+      "Confirm Eureka service registry status and ensure instance hostname/port are resolved correctly"
+    ],
+    "severity": "HIGH",
+    "priority": 10
+  },
+  {
+    "pattern": "SocketTimeoutException|java\\.net\\.SocketTimeoutException|Read timed out",
+    "isRegex": true,
+    "errorType": "SocketTimeoutException",
+    "possibleCauses": [
+      "Target service responded too slowly, exceeding the HTTP read/socket timeout limit",
+      "Heavy resource utilization or slow database calls on the downstream service",
+      "Network latency or packet loss causing delayed response delivery"
+    ],
+    "suggestedFixes": [
+      "Analyze the logs of the downstream service to determine why request handling was slow",
+      "Increase the read-timeout or connection-timeout configuration in RestTemplate/WebClient/FeignClient",
+      "Implement circuit breakers (Resilience4j) or retry logic to handle transient timeouts gracefully"
+    ],
+    "severity": "HIGH",
+    "priority": 10
+  },
+  {
+    "pattern": "org\\.apache\\.kafka\\.common\\.errors\\.TimeoutException|Kafka TimeoutException|TimeoutException",
+    "isRegex": true,
+    "errorType": "Kafka TimeoutException",
+    "possibleCauses": [
+      "Kafka broker cluster is offline, unreachable, or in an unhealthy state",
+      "Network delay or misconfigured bootstrap.servers configuration",
+      "Producer request buffer filled up because brokers cannot keep up with write rate"
+    ],
+    "suggestedFixes": [
+      "Check Kafka broker logs and ensure the brokers are running and cluster metadata is healthy",
+      "Verify network routing and validate connection properties in application properties",
+      "Increase delivery.timeout.ms or request.timeout.ms configurations in producer settings"
+    ],
+    "severity": "HIGH",
+    "priority": 10
+  },
+  {
+    "pattern": "LeaderNotAvailableException|org\\.apache\\.kafka\\.common\\.errors\\.LeaderNotAvailableException",
+    "isRegex": true,
+    "errorType": "LeaderNotAvailableException",
+    "possibleCauses": [
+      "Partition leader election is actively occurring for the requested topic/partition",
+      "All replica brokers for the partition have crashed or are offline",
+      "Zookeeper or KRaft metadata sync lag across brokers"
+    ],
+    "suggestedFixes": [
+      "Verify that the Kafka broker cluster has a quorum and all nodes are online",
+      "Implement automatic retries (retries > 0) in the producer configuration to wait for election to finish",
+      "Run kafka-topics.sh to check the under-replicated partition counts and rebalance partitions if needed"
+    ],
+    "severity": "HIGH",
+    "priority": 10
+  },
+  {
+    "pattern": "NoSuchBeanDefinitionException|org\\.springframework\\.beans\\.factory\\.NoSuchBeanDefinitionException",
+    "isRegex": true,
+    "errorType": "NoSuchBeanDefinitionException",
+    "possibleCauses": [
+      "Spring container cannot find a bean of the required type or with the required name",
+      "The package containing the class is not included in Spring's scan packages",
+      "The bean definition was disabled due to conditional annotations (e.g. @ConditionalOnProperty)"
+    ],
+    "suggestedFixes": [
+      "Ensure the missing bean class is annotated with @Component, @Service, @Repository, or declared via @Bean",
+      "Check @ComponentScan or @SpringBootApplication scan packages to verify the package is covered",
+      "Verify that all required conditional properties are correctly specified in the application profile"
+    ],
+    "severity": "HIGH",
+    "priority": 15
+  },
+  {
+    "pattern": "BeanCreationException|org\\.springframework\\.beans\\.factory\\.BeanCreationException",
+    "isRegex": true,
+    "errorType": "BeanCreationException",
+    "possibleCauses": [
+      "Error during dependency injection (autowiring) due to missing dependencies",
+      "Initialization method (@PostConstruct or AfterPropertiesSet) threw an exception",
+      "Circular dependency detected between configured Spring beans"
+    ],
+    "suggestedFixes": [
+      "Inspect the 'caused by' stack traces nested inside the exception to find the root initialization error",
+      "Break circular dependencies using lazy initialization (@Lazy) or structural refactoring",
+      "Verify that all autowired dependencies are correctly registered in the Spring ApplicationContext"
+    ],
+    "severity": "HIGH",
+    "priority": 10
+  }
+]

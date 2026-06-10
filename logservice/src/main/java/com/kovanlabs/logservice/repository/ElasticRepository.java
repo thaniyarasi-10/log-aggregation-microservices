@@ -353,8 +353,8 @@ public class ElasticRepository {
             if (!hasAnyLogIndexes()) {
                 return new ArrayList<>();
             }
-            LOGGER.debug("SEARCH MULTI → services={} levels={} environment={} traceId={} message={}",
-                    services, levels, environment, traceId, message);
+//            LOGGER.debug("SEARCH MULTI → services={} levels={} environment={} traceId={} message={}",
+//                    services, levels, environment, traceId, message);
 
             TimeBounds bounds = resolveTimeBounds(from, to);
             BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
@@ -1198,6 +1198,395 @@ public class ElasticRepository {
         } catch (Exception e) {
             LOGGER.error("Elasticsearch query failed [{}]: {}", operation, e.getMessage(), e);
             throw new RuntimeException("Elasticsearch query failure", e);
+        }
+    }
+
+    /**
+     * Retrieve a specific error log by its Elasticsearch ID.
+     */
+    public Optional<LogEvent> findById(String id, AuthenticatedUserContext context) {
+        try {
+            if (!hasAnyLogIndexes()) {
+                return Optional.empty();
+            }
+
+            BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
+            boolQueryBuilder.must(q -> q.ids(i -> i.values(id)));
+            buildAccessFilter(context).ifPresent(boolQueryBuilder::filter);
+
+            SearchRequest request = SearchRequest.of(s -> s
+                    .index(INDEX_PATTERN)
+                    .query(boolQueryBuilder.build()._toQuery())
+                    .size(1)
+            );
+
+            SearchResponse<LogEvent> response = client.search(request, LogEvent.class);
+            if (response.hits() != null && !response.hits().hits().isEmpty()) {
+                return Optional.ofNullable(response.hits().hits().get(0).source());
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to find log by id {} in Elasticsearch: {}", id, e.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Search error logs in Elasticsearch with pagination and optional filtering.
+     */
+    public List<LogEvent> searchErrors(String service, String errorType, String from, String to, int page, int size, AuthenticatedUserContext context) {
+        try {
+            if (!hasAnyLogIndexes()) {
+                return new ArrayList<>();
+            }
+
+            TimeBounds bounds = resolveTimeBounds(from, to);
+            BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
+
+            // Filter for ERROR level (case-insensitive search matching normalizer)
+            boolQueryBuilder.must(
+                    QueryBuilders.term(t -> t
+                            .field(LEVEL_FIELD)
+                            .value(ERROR_LEVEL_VALUE)
+                    )
+            );
+
+            if (service != null && !service.isBlank()) {
+                boolQueryBuilder.must(
+                        QueryBuilders.term(t -> t
+                                .field(SERVICE_FIELD)
+                                .value(service.trim().toLowerCase(java.util.Locale.ROOT))
+                        )
+                );
+            }
+
+            if (errorType != null && !errorType.isBlank()) {
+                boolQueryBuilder.must(
+                        QueryBuilders.term(t -> t
+                                .field("errorType")
+                                .value(errorType.trim())
+                        )
+                );
+            }
+
+            boolQueryBuilder.filter(rangeQuery(bounds));
+            buildAccessFilter(context).ifPresent(boolQueryBuilder::filter);
+
+            BoolQuery boolQuery = boolQueryBuilder.build();
+
+            SearchRequest request = SearchRequest.of(s -> s
+                    .index(INDEX_PATTERN)
+                    .query(boolQuery._toQuery())
+                    .from(page * size)
+                    .size(Math.min(size, 500))
+                    .sort(sort -> sort
+                            .field(f -> f
+                                    .field("@timestamp")
+                                    .order(SortOrder.Desc)))
+            );
+
+            SearchResponse<LogEvent> response = executeSearch(request, LogEvent.class, "searchErrors", boolQuery._toQuery(), context, service != null ? List.of(service) : null);
+            return response.hits().hits()
+                    .stream()
+                    .map(Hit::source)
+                    .filter(Objects::nonNull)
+                    .toList();
+
+        } catch (Exception e) {
+            logErrorThrottled("searchErrors", e);
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Fetch aggregated statistics for errors (count per type, top patterns, most affected services).
+     */
+    public Map<String, Object> getErrorStats(AuthenticatedUserContext context) {
+        try {
+            if (!hasAnyLogIndexes()) {
+                return Map.of(
+                        "occurrencesPerErrorType", Map.of(),
+                        "topRecurringErrors", List.of(),
+                        "mostAffectedServices", Map.of()
+                );
+            }
+
+            BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
+            boolQueryBuilder.must(
+                    QueryBuilders.term(t -> t
+                            .field(LEVEL_FIELD)
+                            .value(ERROR_LEVEL_VALUE)
+                    )
+            );
+            buildAccessFilter(context).ifPresent(boolQueryBuilder::filter);
+
+            SearchRequest request = SearchRequest.of(s -> s
+                    .index(INDEX_PATTERN)
+                    .query(boolQueryBuilder.build()._toQuery())
+                    .size(0)
+                    .aggregations("by_error_type", a -> a
+                            .terms(t -> t
+                                    .field("errorType")
+                                    .size(100)
+                            )
+                    )
+                    .aggregations("by_service", a -> a
+                            .terms(t -> t
+                                    .field(SERVICE_FIELD)
+                                    .size(100)
+                            )
+                    )
+            );
+
+            SearchResponse<Void> response = client.search(request, Void.class);
+
+            Map<String, Long> occurrencesPerErrorType = new HashMap<>();
+            List<Map<String, Object>> topRecurringErrors = new ArrayList<>();
+
+            if (response.aggregations() != null && response.aggregations().get("by_error_type") != null) {
+                var buckets = response.aggregations().get("by_error_type").sterms().buckets().array();
+                for (var bucket : buckets) {
+                    String type = bucket.key().stringValue();
+                    long count = bucket.docCount();
+                    occurrencesPerErrorType.put(type, count);
+                    topRecurringErrors.add(Map.of("errorType", type, "count", count));
+                }
+            }
+
+            Map<String, Long> mostAffectedServices = new HashMap<>();
+            if (response.aggregations() != null && response.aggregations().get("by_service") != null) {
+                var buckets = response.aggregations().get("by_service").sterms().buckets().array();
+                for (var bucket : buckets) {
+                    mostAffectedServices.put(bucket.key().stringValue(), bucket.docCount());
+                }
+            }
+
+            return Map.of(
+                    "occurrencesPerErrorType", occurrencesPerErrorType,
+                    "topRecurringErrors", topRecurringErrors,
+                    "mostAffectedServices", mostAffectedServices
+            );
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to aggregate error statistics from Elasticsearch: {}", e.getMessage(), e);
+            return Map.of(
+                    "occurrencesPerErrorType", Map.of(),
+                    "topRecurringErrors", List.of(),
+                    "mostAffectedServices", Map.of()
+            );
+        }
+    }
+
+    public void saveKnowledgeBaseEntry(com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry entry) {
+        try {
+            if (entry.getCreatedAt() == null || entry.getCreatedAt().isBlank()) {
+                entry.setCreatedAt(Instant.now().toString());
+            }
+            IndexRequest<com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry> request = IndexRequest.of(i -> i
+                    .index("error-knowledge-base")
+                    .document(entry)
+            );
+            client.index(request);
+            LOGGER.info("Saved new knowledge base entry for type: {}", entry.getErrorType());
+        } catch (Exception e) {
+            LOGGER.error("Failed to save knowledge base entry: {}", e.getMessage(), e);
+        }
+    }
+
+    public Optional<com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry> findSimilarKnowledgeBaseEntry(String message, String errorDetails) {
+        try {
+            String searchText = (message != null ? message : "") + " " + (errorDetails != null ? errorDetails : "");
+            searchText = searchText.trim();
+            if (searchText.isEmpty()) {
+                return Optional.empty();
+            }
+
+            final String queryText = searchText;
+            SearchRequest request = SearchRequest.of(s -> s
+                    .index("error-knowledge-base")
+                    .query(q -> q.multiMatch(m -> m
+                            .fields(List.of("errorPattern", "errorType", "rootCause"))
+                            .query(queryText)
+                            .fuzziness("AUTO")
+                    ))
+                    .size(5)
+            );
+
+            SearchResponse<com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry> response = client.search(request, com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry.class);
+            if (response.hits() == null || response.hits().hits().isEmpty()) {
+                return Optional.empty();
+            }
+
+            for (Hit<com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry> hit : response.hits().hits()) {
+                com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry entry = hit.source();
+                if (entry == null) continue;
+
+                if (isSimilar(queryText, entry)) {
+                    entry.setId(hit.id());
+                    return Optional.of(entry);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to search similar knowledge base entry in Elasticsearch: {}", e.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    private boolean isSimilar(String query, com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry entry) {
+        return isStringSimilar(query, entry.getErrorPattern()) ||
+               isStringSimilar(query, entry.getErrorType()) ||
+               isStringSimilar(query, entry.getRootCause());
+    }
+
+    private boolean isStringSimilar(String s1, String s2) {
+        if (s1 == null || s2 == null) return false;
+        s1 = s1.trim().toLowerCase();
+        s2 = s2.trim().toLowerCase();
+        if (s1.isEmpty() || s2.isEmpty()) return false;
+
+        if (s1.equals(s2)) return true;
+
+        if (s1.contains(s2) || s2.contains(s1)) return true;
+
+        double levSim = getLevenshteinSimilarity(s1, s2);
+        if (levSim >= 0.5) return true;
+
+        double jaccard = getTokenJaccardSimilarity(s1, s2);
+        if (jaccard >= 0.4) return true;
+
+        return false;
+    }
+
+    private double getLevenshteinSimilarity(String s1, String s2) {
+        int distance = levenshteinDistance(s1, s2);
+        int maxLength = Math.max(s1.length(), s2.length());
+        if (maxLength == 0) return 1.0;
+        return 1.0 - ((double) distance / maxLength);
+    }
+
+    private int levenshteinDistance(CharSequence lhs, CharSequence rhs) {
+        int len0 = lhs.length() + 1;
+        int len1 = rhs.length() + 1;
+        int[] cost = new int[len0];
+        int[] newcost = new int[len0];
+        for (int i = 0; i < len0; i++) cost[i] = i;
+        for (int j = 1; j < len1; j++) {
+            newcost[0] = j;
+            for (int i = 1; i < len0; i++) {
+                int match = (lhs.charAt(i - 1) == rhs.charAt(j - 1)) ? 0 : 1;
+                int cost_replace = cost[i - 1] + match;
+                int cost_insert = cost[i] + 1;
+                int cost_delete = newcost[i - 1] + 1;
+                newcost[i] = Math.min(Math.min(cost_insert, cost_delete), cost_replace);
+            }
+            int[] swap = cost; cost = newcost; newcost = swap;
+        }
+        return cost[len0 - 1];
+    }
+
+    private double getTokenJaccardSimilarity(String s1, String s2) {
+        java.util.Set<String> set1 = Arrays.stream(s1.split("\\W+")).filter(s -> !s.isBlank()).collect(Collectors.toSet());
+        java.util.Set<String> set2 = Arrays.stream(s2.split("\\W+")).filter(s -> !s.isBlank()).collect(Collectors.toSet());
+        if (set1.isEmpty() || set2.isEmpty()) return 0.0;
+
+        long intersection = set1.stream().filter(set2::contains).count();
+        long union = Stream.concat(set1.stream(), set2.stream()).distinct().count();
+        return (double) intersection / union;
+    }
+
+    public Map<String, Object> getAiStats(AuthenticatedUserContext context) {
+        try {
+            if (!hasAnyLogIndexes()) {
+                return Map.of(
+                        "mostCommonAiErrors", Map.of(),
+                        "mostReusedKnowledgeBaseEntries", Map.of(),
+                        "geminiCallsSaved", 0L,
+                        "topRootCauses", Map.of()
+                );
+            }
+
+            BoolQuery.Builder baseQuery = QueryBuilders.bool();
+            baseQuery.must(QueryBuilders.term(t -> t.field(LEVEL_FIELD).value(ERROR_LEVEL_VALUE)));
+            buildAccessFilter(context).ifPresent(baseQuery::filter);
+
+            SearchRequest request = SearchRequest.of(s -> s
+                    .index(INDEX_PATTERN)
+                    .query(baseQuery.build()._toQuery())
+                    .size(0)
+                    .aggregations("all_ai_errors", a -> a
+                            .filter(f -> f.term(t -> t.field("suggestionSource").value("gemini")))
+                            .aggregations("error_types", sub -> sub
+                                    .terms(t -> t
+                                            .field("errorType")
+                                            .size(50)
+                                    )
+                            )
+                    )
+                    .aggregations("all_reused_entries", a -> a
+                            .filter(f -> f.term(t -> t.field("suggestionSource").value("knowledge_base")))
+                            .aggregations("error_types", sub -> sub
+                                    .terms(t -> t
+                                            .field("errorType")
+                                            .size(50)
+                                    )
+                            )
+                    )
+                    .aggregations("top_root_causes", a -> a
+                            .terms(t -> t
+                                    .field("rootCause.keyword")
+                                    .size(50)
+                            )
+                    )
+            );
+
+            SearchResponse<Void> response = client.search(request, Void.class);
+
+            Map<String, Long> mostCommonAiErrors = new HashMap<>();
+            if (response.aggregations() != null && response.aggregations().get("all_ai_errors") != null) {
+                var filterAgg = response.aggregations().get("all_ai_errors").filter();
+                if (filterAgg.aggregations() != null && filterAgg.aggregations().get("error_types") != null) {
+                    var buckets = filterAgg.aggregations().get("error_types").sterms().buckets().array();
+                    for (var bucket : buckets) {
+                        mostCommonAiErrors.put(bucket.key().stringValue(), bucket.docCount());
+                    }
+                }
+            }
+
+            Map<String, Long> mostReusedKnowledgeBaseEntries = new HashMap<>();
+            long geminiCallsSaved = 0L;
+            if (response.aggregations() != null && response.aggregations().get("all_reused_entries") != null) {
+                var filterAgg = response.aggregations().get("all_reused_entries").filter();
+                geminiCallsSaved = filterAgg.docCount();
+                if (filterAgg.aggregations() != null && filterAgg.aggregations().get("error_types") != null) {
+                    var buckets = filterAgg.aggregations().get("error_types").sterms().buckets().array();
+                    for (var bucket : buckets) {
+                        mostReusedKnowledgeBaseEntries.put(bucket.key().stringValue(), bucket.docCount());
+                    }
+                }
+            }
+
+            Map<String, Long> topRootCauses = new HashMap<>();
+            if (response.aggregations() != null && response.aggregations().get("top_root_causes") != null) {
+                var buckets = response.aggregations().get("top_root_causes").sterms().buckets().array();
+                for (var bucket : buckets) {
+                    topRootCauses.put(bucket.key().stringValue(), bucket.docCount());
+                }
+            }
+
+            return Map.of(
+                    "mostCommonAiErrors", mostCommonAiErrors,
+                    "mostReusedKnowledgeBaseEntries", mostReusedKnowledgeBaseEntries,
+                    "geminiCallsSaved", geminiCallsSaved,
+                    "topRootCauses", topRootCauses
+            );
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to aggregate AI statistics from Elasticsearch: {}", e.getMessage(), e);
+            return Map.of(
+                    "mostCommonAiErrors", Map.of(),
+                    "mostReusedKnowledgeBaseEntries", Map.of(),
+                    "geminiCallsSaved", 0L,
+                    "topRootCauses", Map.of()
+                );
         }
     }
 }

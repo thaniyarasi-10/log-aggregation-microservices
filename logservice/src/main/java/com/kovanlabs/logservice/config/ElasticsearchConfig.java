@@ -74,12 +74,42 @@ public class ElasticsearchConfig {
                                         .properties("traceId", pr -> pr.keyword(k -> k))
                                         .properties("message", pr -> pr.text(tx -> tx))
                                         .properties("responseTime", pr -> pr.double_(db -> db))
+                                        .properties("errorType", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
+                                        .properties("possibleCauses", pr -> pr.keyword(k -> k))
+                                        .properties("suggestedFixes", pr -> pr.keyword(k -> k))
+                                        .properties("severity", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
+                                        .properties("suggestionGeneratedAt", pr -> pr.date(d -> d))
+                                        .properties("rootCause", pr -> pr.text(tx -> tx.fields("keyword", f -> f.keyword(k -> k))))
+                                        .properties("confidence", pr -> pr.integer(i -> i))
+                                        .properties("suggestionSource", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
                                 )
                         )
                 );
                 LOGGER.info("Elasticsearch index template 'app-logs-template' initialized successfully.");
+
+                LOGGER.info("Checking/Initializing Elasticsearch index 'error-knowledge-base'...");
+                boolean indexExists = client.indices().exists(e -> e.index("error-knowledge-base")).value();
+                if (!indexExists) {
+                    client.indices().create(c -> c
+                            .index("error-knowledge-base")
+                            .mappings(m -> m
+                                    .properties("errorPattern", pr -> pr.text(t -> t))
+                                    .properties("errorType", pr -> pr.keyword(k -> k))
+                                    .properties("rootCause", pr -> pr.text(tx -> tx.fields("keyword", f -> f.keyword(k -> k))))
+                                    .properties("possibleCauses", pr -> pr.keyword(k -> k))
+                                    .properties("suggestedFixes", pr -> pr.keyword(k -> k))
+                                    .properties("severity", pr -> pr.keyword(k -> k))
+                                    .properties("confidence", pr -> pr.integer(i -> i))
+                                    .properties("source", pr -> pr.keyword(k -> k))
+                                    .properties("createdAt", pr -> pr.date(d -> d))
+                            )
+                    );
+                    LOGGER.info("Elasticsearch index 'error-knowledge-base' created successfully.");
+                } else {
+                    LOGGER.info("Elasticsearch index 'error-knowledge-base' already exists.");
+                }
             } catch (Exception e) {
-                LOGGER.error("Failed to initialize Elasticsearch index template 'app-logs-template'", e);
+                LOGGER.error("Failed to initialize Elasticsearch templates and indexes", e);
             }
         };
     }
