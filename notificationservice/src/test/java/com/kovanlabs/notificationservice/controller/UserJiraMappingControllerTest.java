@@ -74,6 +74,31 @@ class UserJiraMappingControllerTest {
     }
 
     @Test
+    void getUserMappings_asDev_filtersList() throws Exception {
+        Object[] row = new Object[] { "Arun", "Arun", "payment-service", mappingId, "abc123", "Arun Kumar", true };
+        when(repository.findAllUserMappingsWithServices()).thenReturn(Collections.singletonList(row));
+
+        // When requesting as Arun (dev), it matches and returns
+        mockMvc.perform(get("/api/jira/user-mappings")
+                        .header("X-User-Id", "Arun")
+                        .header("X-User-Role", "DEV"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].userId", is("Arun")));
+
+        // When requesting as another user (dev), it filters it out. Since no service mapping, it checks database
+        when(repository.findUsernameByUserId("Bob")).thenReturn(Optional.of("Bob"));
+        when(repository.findByUserId("Bob")).thenReturn(Optional.empty());
+        mockMvc.perform(get("/api/jira/user-mappings")
+                        .header("X-User-Id", "Bob")
+                        .header("X-User-Role", "DEV"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].userId", is("Bob")))
+                .andExpect(jsonPath("$[0].id").value(is((Object) null)));
+    }
+
+    @Test
     void createMapping_valid_returnsCreated() throws Exception {
         UserJiraMappingRequest req = new UserJiraMappingRequest(
                 "Arun", "abc123", "Arun Kumar", true
@@ -91,6 +116,37 @@ class UserJiraMappingControllerTest {
     }
 
     @Test
+    void createMapping_asDev_valid_returnsCreated() throws Exception {
+        UserJiraMappingRequest req = new UserJiraMappingRequest(
+                "Arun", "abc123", "Arun Kumar", true
+        );
+
+        when(repository.findByUserId("Arun")).thenReturn(Optional.empty());
+        when(repository.save(any(UserJiraMapping.class))).thenReturn(mapping);
+
+        mockMvc.perform(post("/api/jira/user-mappings")
+                        .header("X-User-Id", "Arun")
+                        .header("X-User-Role", "DEV")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(req)))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void createMapping_asDev_invalidUser_returnsForbidden() throws Exception {
+        UserJiraMappingRequest req = new UserJiraMappingRequest(
+                "Bob", "abc123", "Arun Kumar", true
+        );
+
+        mockMvc.perform(post("/api/jira/user-mappings")
+                        .header("X-User-Id", "Arun")
+                        .header("X-User-Role", "DEV")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void createMapping_duplicate_returnsConflict() throws Exception {
         UserJiraMappingRequest req = new UserJiraMappingRequest(
                 "Arun", "abc123", "Arun Kumar", true
@@ -105,10 +161,54 @@ class UserJiraMappingControllerTest {
     }
 
     @Test
+    void updateMapping_asDev_valid_returnsOk() throws Exception {
+        UserJiraMappingRequest req = new UserJiraMappingRequest(
+                "Arun", "abc123_updated", "Arun Kumar Updated", true
+        );
+
+        when(repository.findById(mappingId)).thenReturn(Optional.of(mapping));
+        when(repository.save(any(UserJiraMapping.class))).thenReturn(mapping);
+
+        mockMvc.perform(put("/api/jira/user-mappings/{id}", mappingId)
+                        .header("X-User-Id", "Arun")
+                        .header("X-User-Role", "DEV")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(req)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void updateMapping_asDev_forOther_returnsForbidden() throws Exception {
+        UserJiraMappingRequest req = new UserJiraMappingRequest(
+                "Bob", "abc123_updated", "Arun Kumar Updated", true
+        );
+
+        when(repository.findById(mappingId)).thenReturn(Optional.of(mapping));
+
+        // Arun (dev) trying to modify a mapping belonging to Bob, or change mapping owner to Bob
+        mockMvc.perform(put("/api/jira/user-mappings/{id}", mappingId)
+                        .header("X-User-Id", "Bob") // mapping belongs to Arun, logged in user is Bob
+                        .header("X-User-Role", "DEV")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void deleteMapping_exists_returns204() throws Exception {
-        when(repository.existsById(mappingId)).thenReturn(true);
+        when(repository.findById(mappingId)).thenReturn(Optional.of(mapping));
 
         mockMvc.perform(delete("/api/jira/user-mappings/{id}", mappingId))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void deleteMapping_asDev_returnsForbiddenForOther() throws Exception {
+        when(repository.findById(mappingId)).thenReturn(Optional.of(mapping));
+
+        mockMvc.perform(delete("/api/jira/user-mappings/{id}", mappingId)
+                        .header("X-User-Id", "Bob")
+                        .header("X-User-Role", "DEV"))
+                .andExpect(status().isForbidden());
     }
 }

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import Modal from '../components/Modal';
 import { useAuth } from '../context/AuthContext';
 import { apiService, extractApiErrorMessage } from '../services/api';
-import type { ServiceAccessRequest, ServiceRecord } from '../types';
+import { PageHeader, MetricCard, StatusBadge, EmptyState } from '../components/UI';
+import type { ServiceAccessRequest, ServiceRecord, ServiceHealth, MetricsResponse, LogEvent, AlertItem } from '../types';
 
 type ServiceForm = {
   name: string;
@@ -14,22 +15,58 @@ const emptyServiceForm: ServiceForm = {
   description: ''
 };
 
+export function ServerIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: 'var(--text-secondary)' }}>
+      <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+      <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+      <line x1="6" y1="6" x2="6.01" y2="6" />
+      <line x1="6" y1="18" x2="6.01" y2="18" />
+    </svg>
+  );
+}
+
 export default function ServicesPage() {
   const { isAdmin } = useAuth();
   const addNameInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Core data states
   const [services, setServices] = useState<ServiceRecord[]>([]);
   const [requests, setRequests] = useState<ServiceAccessRequest[]>([]);
+  const [healthData, setHealthData] = useState<ServiceHealth[]>([]);
+  const [logsHealth24h, setLogsHealth24h] = useState<any[]>([]);
+  const [enrichedMetrics, setEnrichedMetrics] = useState<Record<string, { avgResponseTime: number; errorRate: number }>>({});
+
+  // Loading and error states
   const [loading, setLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string>('');
   const [requestsLoading, setRequestsLoading] = useState<boolean>(true);
   const [requestsError, setRequestsError] = useState<string>('');
+  const [healthLoading, setHealthLoading] = useState<boolean>(true);
+  const [healthError, setHealthError] = useState<string>('');
   const [actionError, setActionError] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const [showCreateInline, setShowCreateInline] = useState<boolean>(false);
+
+  // Tab & Search state
+  const [activeTab, setActiveTab] = useState<'health' | 'ownership' | 'requests'>('health');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Service drawer state
+  const [selectedService, setSelectedService] = useState<ServiceRecord | null>(null);
+  const [drawerMetrics, setDrawerMetrics] = useState<MetricsResponse | null>(null);
+  const [drawerMetricsLoading, setDrawerMetricsLoading] = useState<boolean>(false);
+  const [drawerLogs, setDrawerLogs] = useState<LogEvent[]>([]);
+  const [drawerLogsLoading, setDrawerLogsLoading] = useState<boolean>(false);
+  const [drawerAlerts, setDrawerAlerts] = useState<AlertItem[]>([]);
+  const [drawerAlertsLoading, setDrawerAlertsLoading] = useState<boolean>(false);
+
+  // Modal states
+  const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [createForm, setCreateForm] = useState<ServiceForm>(emptyServiceForm);
   const [editService, setEditService] = useState<ServiceRecord | null>(null);
   const [editForm, setEditForm] = useState<ServiceForm>(emptyServiceForm);
 
+  // Clean error helpers
   const toCleanLoadError = (err: unknown) => {
     const message = extractApiErrorMessage(err, 'Failed to load services').trim();
     if (!message || message.toLowerCase() === 'invalid request data') {
@@ -46,6 +83,7 @@ export default function ServicesPage() {
     return message;
   };
 
+  // Loaders
   const loadServices = async () => {
     const data = isAdmin ? await apiService.getAdminServices() : await apiService.getServices();
     setServices(data);
@@ -62,6 +100,29 @@ export default function ServicesPage() {
     }
   };
 
+  const loadHealthData = async (showLoader: boolean) => {
+    try {
+      if (showLoader) setHealthLoading(true);
+      const data = await apiService.getServiceHealth();
+      setHealthData(data);
+      setHealthError('');
+    } catch (err) {
+      setHealthError(extractApiErrorMessage(err, 'Failed to load service health'));
+    } finally {
+      if (showLoader) setHealthLoading(false);
+    }
+  };
+
+  const loadLogsHealth24h = async () => {
+    try {
+      const data = await apiService.getLogsServiceHealth(1440);
+      setLogsHealth24h(data);
+    } catch (err) {
+      console.error('Failed to load 24h logs health', err);
+    }
+  };
+
+  // Initial and polling data setup
   useEffect(() => {
     let active = true;
 
@@ -70,7 +131,6 @@ export default function ServicesPage() {
         if (showLoader) {
           setLoading(true);
         }
-
         const data = isAdmin ? await apiService.getAdminServices() : await apiService.getServices();
         if (!active) return;
         setServices(data);
@@ -92,15 +152,22 @@ export default function ServicesPage() {
           setRequests([]);
         }
       } finally {
-        if (showLoader && active) setLoading(false);
-        if (showLoader && active) setRequestsLoading(false);
+        if (showLoader && active) {
+          setLoading(false);
+          setRequestsLoading(false);
+        }
       }
     };
 
     void boot(true);
+    void loadHealthData(true);
+    void loadLogsHealth24h();
+
     const timer = window.setInterval(() => {
       void boot(false);
-    }, 5000);
+      void loadHealthData(false);
+      void loadLogsHealth24h();
+    }, 15000);
 
     return () => {
       active = false;
@@ -108,17 +175,103 @@ export default function ServicesPage() {
     };
   }, [isAdmin]);
 
-  const normalizedRequestStatus = (status?: string) => String(status || '').trim().toUpperCase();
-  const pendingRequests = requests.filter((request) => normalizedRequestStatus(request.status) === 'PENDING');
-  const rejectedRequests = requests.filter((request) => normalizedRequestStatus(request.status) === 'REJECTED');
+  // Enrichment of 24h metrics
+  useEffect(() => {
+    if (services.length === 0) return;
 
-  const getStatusBadgeClass = (status?: string) => {
-    const normalized = normalizedRequestStatus(status);
-    if (normalized === 'APPROVED') return 'tag tag-info';
-    if (normalized === 'REJECTED') return 'tag tag-error';
-    return 'tag tag-warn';
-  };
+    const fetchMetricsForAll = async () => {
+      const result: Record<string, { avgResponseTime: number; errorRate: number }> = {};
+      await Promise.all(
+        services.map(async (svc) => {
+          try {
+            const m = await apiService.fetchMetrics({
+              timeRange: '24h',
+              services: [svc.name],
+              levels: [],
+              search: '',
+              service: svc.name,
+              level: ''
+            });
+            result[svc.name] = {
+              avgResponseTime: m.avgResponseTime || 0,
+              errorRate: m.errorRate || 0
+            };
+          } catch {
+            result[svc.name] = { avgResponseTime: 0, errorRate: 0 };
+          }
+        })
+      );
+      setEnrichedMetrics(result);
+    };
 
+    void fetchMetricsForAll();
+  }, [services]);
+
+  // Handle drawer data loading
+  useEffect(() => {
+    if (!selectedService) {
+      setDrawerMetrics(null);
+      setDrawerLogs([]);
+      setDrawerAlerts([]);
+      return;
+    }
+
+    const loadDrawerData = async () => {
+      const serviceName = selectedService.name;
+
+      // Load Metrics
+      try {
+        setDrawerMetricsLoading(true);
+        const metrics = await apiService.fetchMetrics({
+          timeRange: '24h',
+          services: [serviceName],
+          levels: [],
+          search: '',
+          service: serviceName,
+          level: ''
+        });
+        setDrawerMetrics(metrics);
+      } catch (err) {
+        console.error('Failed to load drawer metrics', err);
+      } finally {
+        setDrawerMetricsLoading(false);
+      }
+
+      // Load Logs
+      try {
+        setDrawerLogsLoading(true);
+        const logs = await apiService.fetchLogs({
+          timeRange: '1h',
+          services: [serviceName],
+          levels: [],
+          search: '',
+          service: serviceName,
+          level: ''
+        });
+        setDrawerLogs(logs.slice(0, 5));
+      } catch (err) {
+        console.error('Failed to load drawer logs', err);
+      } finally {
+        setDrawerLogsLoading(false);
+      }
+
+      // Load Alerts
+      try {
+        setDrawerAlertsLoading(true);
+        const alerts = await apiService.fetchAlerts();
+        const filtered = alerts.filter(a => a.service.toLowerCase() === serviceName.toLowerCase());
+        setDrawerAlerts(filtered);
+      } catch (err) {
+        console.error('Failed to load drawer alerts', err);
+      } finally {
+        setDrawerAlertsLoading(false);
+      }
+    };
+
+    void loadDrawerData();
+  }, [selectedService]);
+
+  // Request & Creation handlers
   const createService = async () => {
     if (!createForm.name.trim()) {
       setActionError('Service name is required');
@@ -139,7 +292,7 @@ export default function ServicesPage() {
         });
       }
       setCreateForm(emptyServiceForm);
-      setShowCreateInline(false);
+      setShowCreateModal(false);
       await loadServices();
       await loadRequests();
       setActionError('');
@@ -197,6 +350,7 @@ export default function ServicesPage() {
     }
   };
 
+  // Request workflow handlers
   const approveRequest = async (request: ServiceAccessRequest) => {
     try {
       setSubmitting(true);
@@ -240,353 +394,598 @@ export default function ServicesPage() {
     }
   };
 
-  const openCreateInline = () => {
-    setShowCreateInline(true);
-    window.setTimeout(() => {
-      addNameInputRef.current?.focus();
-    }, 0);
-  };
-
-  // Statistics calculations
-  const totalServices = services.length;
-  const activeServices = services.filter((s) => s.active !== false && s.status !== 'INACTIVE').length;
+  const normalizedRequestStatus = (status?: string) => String(status || '').trim().toUpperCase();
+  const pendingRequests = requests.filter((request) => normalizedRequestStatus(request.status) === 'PENDING');
+  const rejectedRequests = requests.filter((request) => normalizedRequestStatus(request.status) === 'REJECTED');
   const pendingRequestsCount = pendingRequests.length;
-  const rejectedRequestsCount = rejectedRequests.length;
+
+  // Enriched service data with health status
+  const enrichedServices = useMemo(() => {
+    return services.map(service => {
+      const health = healthData.find(h => h.service.toLowerCase() === service.name.toLowerCase());
+      const status = health ? health.status : 'NO_DATA';
+      const lastSeen = health ? health.lastSeen : null;
+      return {
+        ...service,
+        status,
+        lastSeen,
+      };
+    });
+  }, [services, healthData]);
+
+  // Statistics calculation for health tab
+  const healthyCount = enrichedServices.filter(s => s.status === 'OK').length;
+  const warningCount = enrichedServices.filter(s => s.status === 'WARNING').length;
+  const criticalCount = enrichedServices.filter(s => s.status === 'ERROR').length;
+  const nodataCount = enrichedServices.filter(s => s.status === 'NO_DATA').length;
+
+  // Filtered health list
+  const filteredServices = useMemo(() => {
+    return enrichedServices.filter((s) =>
+      s.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [enrichedServices, searchQuery]);
 
   return (
-    <main className="dashboard-grid">
-      <section className="dashboard-main" style={{ padding: '24px', gap: '24px' }}>
-        {/* Page Header */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)' }}>Services Management</h1>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-            Monitor service health, define system ownership, and approve access delegation requests.
-          </p>
+    <main className="page-container">
+      {/* Tabs Menu */}
+      <div className="obs-tabs-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px 0 16px' }}>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button
+            className={`obs-tab-btn ${activeTab === 'health' ? 'active' : ''}`}
+            onClick={() => setActiveTab('health')}
+          >
+            Health
+          </button>
+          <button
+            className={`obs-tab-btn ${activeTab === 'ownership' ? 'active' : ''}`}
+            onClick={() => setActiveTab('ownership')}
+          >
+            Ownership
+          </button>
+          <button
+            className={`obs-tab-btn ${activeTab === 'requests' ? 'active' : ''}`}
+            onClick={() => setActiveTab('requests')}
+          >
+            Requests {pendingRequestsCount > 0 && `(${pendingRequestsCount})`}
+          </button>
         </div>
-
-        {/* Summary Statistics Cards */}
-        <div className="services-stats-row">
-          <div className="services-stat-card">
-            <span className="services-stat-title">Total Services</span>
-            <span className="services-stat-value">{totalServices}</span>
-          </div>
-          <div className="services-stat-card stat-active">
-            <span className="services-stat-title">Active Services</span>
-            <span className="services-stat-value">{activeServices}</span>
-          </div>
-          <div className="services-stat-card stat-pending">
-            <span className="services-stat-title">Pending Requests</span>
-            <span className="services-stat-value">{pendingRequestsCount}</span>
-          </div>
-          <div className="services-stat-card stat-rejected">
-            <span className="services-stat-title">Rejected Requests</span>
-            <span className="services-stat-value">{rejectedRequestsCount}</span>
-          </div>
+        <div>
+          {isAdmin ? (
+            <button
+              className="btn"
+              style={{ background: 'var(--accent)', color: '#fff', border: 'none', height: '28px', padding: '0 12px', fontSize: '0.75rem' }}
+              onClick={() => setShowCreateModal(true)}
+            >
+              Add Service
+            </button>
+          ) : (
+            <button
+              className="btn"
+              style={{ background: 'var(--accent)', color: '#fff', border: 'none', height: '28px', padding: '0 12px', fontSize: '0.75rem' }}
+              onClick={() => setShowCreateModal(true)}
+            >
+              Request Access
+            </button>
+          )}
         </div>
+      </div>
 
-        {/* Service Form Card for Creation/Request */}
-        {(showCreateInline || !isAdmin) && (
-          <div className="service-form-card">
-            <h3 className="service-form-title">
-              {isAdmin ? 'Add New Service' : 'Request Access to Service'}
-            </h3>
-            <div className="service-form-grid-fields">
-              <div className="service-form-row">
-                <label htmlFor="service-name-input">Service Name</label>
-                <input
-                  id="service-name-input"
-                  ref={addNameInputRef}
-                  className="form-control"
-                  placeholder="e.g. auth-service"
-                  value={createForm.name}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
-                />
+      {actionError && (
+        <div className="error" style={{ marginBottom: '12px', background: 'var(--level-error-bg)', border: '1px solid var(--level-error)', padding: '10px', borderRadius: '4px' }}>
+          {actionError}
+        </div>
+      )}
+
+      {/* Layout Split Grid: Main Content & Sidebar Details Drawer */}
+      <div className="obs-split-layout">
+        <div className="obs-split-main">
+          {/* HEALTH TAB VIEW */}
+          {activeTab === 'health' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* Summary Cards */}
+              <div className="obs-metrics-grid">
+                <MetricCard title="Healthy Services" value={healthyCount} status="healthy" />
+                <MetricCard title="Warning Services" value={warningCount} status="warning" />
+                <MetricCard title="Critical Services" value={criticalCount} status="critical" />
+                <MetricCard title="No Data Services" value={nodataCount} status="neutral" />
               </div>
-              <div className="service-form-row">
-                <label htmlFor="service-desc-input">Description</label>
-                <input
-                  id="service-desc-input"
-                  className="form-control"
-                  placeholder="Provide a brief description of the service"
-                  value={createForm.description}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, description: e.target.value }))}
-                />
+
+              {/* Table workspace panel (docking toolbar and health table) */}
+              <div className="obs-table-workspace-panel">
+                <div className="obs-filter-toolbar">
+                  <div className="obs-search-wrapper" style={{ width: '100%' }}>
+                    <span className="obs-search-icon">🔍</span>
+                    <input
+                      type="text"
+                      className="form-control obs-search-input"
+                      placeholder="Search services health directory..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {loading && services.length === 0 ? (
+                  <div className="obs-empty-state" style={{ border: 'none', background: 'transparent' }}>
+                    <span className="upload-spinner" style={{ width: '24px', height: '24px', marginBottom: '12px' }} />
+                    <h4 className="obs-empty-title">Loading Health Directory</h4>
+                    <p className="obs-empty-desc">Fetching active service connections and telemetry...</p>
+                  </div>
+                ) : filteredServices.length === 0 ? (
+                  <EmptyState
+                    title="No services found"
+                    description="Verify service configuration or check your filters."
+                    icon="🖥️"
+                  />
+                ) : (
+                  <div className="table-scroll-area">
+                    <table className="log-table" style={{ width: '100%' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: '120px' }}>Status</th>
+                          <th>Service Name</th>
+                          <th>Error Count (24h)</th>
+                          <th>Avg Response Time</th>
+                          <th>Health %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredServices.map((svc) => {
+                          const svcMetrics = enrichedMetrics[svc.name];
+                          const errorCount24h = logsHealth24h.find((lh) => lh.service.toLowerCase() === svc.name.toLowerCase())?.errorCount ?? 0;
+                          const isSelected = selectedService?.name === svc.name;
+
+                          return (
+                            <tr
+                              key={svc.name}
+                              className={`clickable-row ${isSelected ? 'row-selected' : ''}`}
+                              style={{ cursor: 'pointer', background: isSelected ? 'rgba(59, 130, 246, 0.08)' : undefined }}
+                              onClick={() => setSelectedService(svc)}
+                            >
+                              <td>
+                                <StatusBadge status={svc.status} />
+                              </td>
+                              <td style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }}>{svc.name}</td>
+                              <td>
+                                <span className={errorCount24h > 0 ? 'text-danger' : ''} style={{ fontWeight: errorCount24h > 0 ? 600 : 400 }}>
+                                  {errorCount24h}
+                                </span>
+                              </td>
+                              <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
+                                {svcMetrics ? `${svcMetrics.avgResponseTime.toFixed(0)} ms` : '—'}
+                              </td>
+                              <td>
+                                <span style={{ fontWeight: 600, color: svcMetrics ? (svcMetrics.errorRate > 5 ? 'var(--level-error)' : svcMetrics.errorRate > 1 ? 'var(--level-warn)' : 'var(--level-debug)') : 'inherit' }}>
+                                  {svcMetrics ? `${(100 - svcMetrics.errorRate).toFixed(1)}%` : '—'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
-            {actionError && <p className="error" style={{ marginTop: '8px' }}>{actionError}</p>}
-            <div className="service-form-actions">
-              {isAdmin && (
-                <button
-                  className="btn"
-                  disabled={submitting}
-                  onClick={() => {
-                    setShowCreateInline(false);
-                    setCreateForm(emptyServiceForm);
-                    setActionError('');
-                  }}
-                >
-                  Cancel
-                </button>
+          )}
+
+          {/* OWNERSHIP TAB VIEW */}
+          {activeTab === 'ownership' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {loading && services.length === 0 ? (
+                <div className="obs-empty-state">
+                  <span className="upload-spinner" style={{ width: '24px', height: '24px', marginBottom: '12px' }} />
+                  <h4 className="obs-empty-title">Loading Ownership details</h4>
+                  <p className="obs-empty-desc">Fetching system owner matrix...</p>
+                </div>
+              ) : services.length === 0 ? (
+                <EmptyState
+                  title="No services created"
+                  description="Register your first system service component."
+                  icon="🔑"
+                  action={isAdmin ? { label: 'Register Service', onClick: () => setShowCreateModal(true) } : undefined}
+                />
+              ) : (
+                <div className="obs-table-workspace-panel">
+                  <div className="table-scroll-area">
+                    <table className="log-table" style={{ width: '100%' }}>
+                      <thead>
+                        <tr>
+                          <th>Service Name</th>
+                          <th>Description</th>
+                          <th>Owners Assignment (Select Primary)</th>
+                          {isAdmin && <th style={{ width: '140px', textAlign: 'right' }}>Actions</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {services.map((service) => {
+                          const firstLetter = service.name ? service.name.charAt(0) : 'S';
+                          return (
+                            <tr key={service.id || service.name}>
+                              <td style={{ fontWeight: 600, verticalAlign: 'top', fontFamily: 'var(--font-mono)' }}>{service.name}</td>
+                              <td style={{ verticalAlign: 'top', color: 'var(--text-secondary)' }}>
+                                {service.description || 'No description provided.'}
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                  {service.owners && service.owners.map((owner) => (
+                                    <label
+                                      key={owner.userId}
+                                      className={`service-owner-item ${owner.primary ? 'primary-owner' : ''} ${
+                                        isAdmin ? 'owner-editable' : ''
+                                      }`}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        cursor: isAdmin ? 'pointer' : 'default',
+                                        padding: '4px 8px',
+                                        background: owner.primary ? 'rgba(59, 130, 246, 0.12)' : 'var(--surface-raised)',
+                                        border: owner.primary ? '1px solid var(--accent)' : '1px solid var(--border)',
+                                        borderRadius: '3px',
+                                        fontSize: '0.8rem'
+                                      }}
+                                    >
+                                      <input
+                                        type="radio"
+                                        className="service-owner-radio"
+                                        name={`primary-owner-${service.name}`}
+                                        checked={owner.primary}
+                                        disabled={submitting || !isAdmin}
+                                        onChange={() => void handleSetPrimaryOwner(service.name, owner.userId)}
+                                        style={{ margin: 0 }}
+                                      />
+                                      <span>
+                                        {owner.username} {owner.primary && <span style={{ color: 'var(--accent)', fontWeight: 600 }}>(Primary)</span>}
+                                      </span>
+                                    </label>
+                                  ))}
+                                  {(!service.owners || service.owners.length === 0) && (
+                                    <div>
+                                      <span className="tag tag-unassigned">Unassigned</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                              {isAdmin && (
+                                <td style={{ textAlign: 'right', verticalAlign: 'top' }}>
+                                  <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                    <button
+                                      className="btn"
+                                      style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                                      onClick={() => openEdit(service)}
+                                      disabled={!service.id}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      className="btn btn-danger"
+                                      style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                                      onClick={() => void removeService(service.id)}
+                                      disabled={!service.id}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
-              <button
-                className="btn"
-                style={{ background: 'var(--accent)', color: '#fff', border: 'none' }}
-                disabled={submitting}
-                onClick={() => void createService()}
-              >
-                {submitting ? 'Saving...' : (isAdmin ? 'Create Service' : 'Submit Request')}
+            </div>
+          )}
+
+          {/* REQUESTS TAB VIEW */}
+          {activeTab === 'requests' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Pending Requests */}
+              <div>
+                <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Pending Access Requests
+                </h3>
+                {requestsLoading && requests.length === 0 ? (
+                  <div className="state-message" style={{ padding: '1rem 0' }}>Loading requests...</div>
+                ) : requestsError ? (
+                  <div className="state-message" style={{ padding: '1rem 0' }}>
+                    <p className="error">{requestsError}</p>
+                  </div>
+                ) : pendingRequests.length === 0 ? (
+                  <div className="obs-section-panel" style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                    No pending access requests.
+                  </div>
+                ) : (
+                  <div className="obs-table-workspace-panel">
+                    <div className="table-scroll-area">
+                      <table className="log-table" style={{ width: '100%' }}>
+                        <thead>
+                          <tr>
+                            <th>Service</th>
+                            <th>Requested By</th>
+                            <th>Reason / Description</th>
+                            {isAdmin && <th style={{ width: '180px', textAlign: 'right' }}>Actions</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pendingRequests.map((req) => (
+                            <tr key={req.id}>
+                              <td style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }}>{req.serviceName}</td>
+                              <td>{req.requestedByEmail}</td>
+                              <td>{req.description || 'No reason provided.'}</td>
+                              {isAdmin && (
+                                <td style={{ textAlign: 'right' }}>
+                                  <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                    <button
+                                      className="btn btn-danger"
+                                      style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                                      disabled={submitting}
+                                      onClick={() => void rejectRequest(req)}
+                                    >
+                                      Reject
+                                    </button>
+                                    <button
+                                      className="btn"
+                                      style={{ padding: '2px 8px', fontSize: '0.72rem', background: 'var(--accent)', color: '#fff', border: 'none' }}
+                                      disabled={submitting}
+                                      onClick={() => void approveRequest(req)}
+                                    >
+                                      Approve
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Rejected Requests */}
+              <div>
+                <h3 style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Rejected Access Requests
+                </h3>
+                {requestsLoading && requests.length === 0 ? (
+                  <div className="state-message" style={{ padding: '1rem 0' }}>Loading requests...</div>
+                ) : rejectedRequests.length === 0 ? (
+                  <div className="obs-section-panel" style={{ padding: '16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                    No rejected access requests.
+                  </div>
+                ) : (
+                  <div className="obs-table-workspace-panel">
+                    <div className="table-scroll-area">
+                      <table className="log-table" style={{ width: '100%' }}>
+                        <thead>
+                          <tr>
+                            <th>Service</th>
+                            <th>Requested By</th>
+                            <th>Reason / Comment</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rejectedRequests.map((req) => (
+                            <tr key={req.id}>
+                              <td style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }}>{req.serviceName}</td>
+                              <td>{req.requestedByEmail}</td>
+                              <td style={{ color: 'var(--level-error)' }}>
+                                {req.reviewComment || req.description || 'No comment provided.'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* SIDE DRAWER DETAILS PANEL */}
+        {selectedService && (
+          <div className="obs-split-drawer">
+            <div className="obs-drawer-header">
+              <div className="obs-drawer-title">
+                <h3>{selectedService.name} Details</h3>
+              </div>
+              <button className="obs-drawer-close" onClick={() => setSelectedService(null)}>
+                ✕
               </button>
+            </div>
+            <div className="obs-drawer-body">
+              {/* Overview */}
+              <div className="obs-drawer-section">
+                <span className="obs-drawer-section-title">Overview</span>
+                <div className="obs-drawer-grid">
+                  <div className="obs-drawer-item">
+                    <span className="obs-drawer-label">Service Name</span>
+                    <span className="obs-drawer-value" style={{ fontWeight: 600 }}>{selectedService.name}</span>
+                  </div>
+                  <div className="obs-drawer-item">
+                    <span className="obs-drawer-label">Status</span>
+                    <div style={{ marginTop: '2px' }}>
+                      <StatusBadge status={selectedService.status || 'NO_DATA'} />
+                    </div>
+                  </div>
+                </div>
+                <div className="obs-drawer-item" style={{ marginTop: '6px' }}>
+                  <span className="obs-drawer-label">Description</span>
+                  <span className="obs-drawer-value" style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    {selectedService.description || 'No description provided.'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Ownership */}
+              <div className="obs-drawer-section">
+                <span className="obs-drawer-section-title">Ownership</span>
+                <div className="obs-drawer-item">
+                  <span className="obs-drawer-label">Primary Owner</span>
+                  <span className="obs-drawer-value">
+                    {selectedService.owners?.find(o => o.primary)?.username || 'Unassigned'}
+                  </span>
+                </div>
+                <div className="obs-drawer-item" style={{ marginTop: '4px' }}>
+                  <span className="obs-drawer-label">Secondary Owners</span>
+                  <span className="obs-drawer-value" style={{ fontSize: '0.78rem' }}>
+                    {selectedService.owners?.filter(o => !o.primary).map(o => o.username).join(', ') || 'None'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Telemetry Metrics */}
+              <div className="obs-drawer-section">
+                <span className="obs-drawer-section-title">Health Metrics (24h)</span>
+                {drawerMetricsLoading ? (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="upload-spinner" style={{ width: '12px', height: '12px' }} />
+                    Loading metrics telemetry...
+                  </div>
+                ) : drawerMetrics ? (
+                  <div className="obs-drawer-grid">
+                    <div className="obs-drawer-item">
+                      <span className="obs-drawer-label">Throughput</span>
+                      <span className="obs-drawer-value">{drawerMetrics.totalLogs} logs</span>
+                    </div>
+                    <div className="obs-drawer-item">
+                      <span className="obs-drawer-label">Error Rate</span>
+                      <span className="obs-drawer-value" style={{ color: drawerMetrics.errorRate > 0 ? 'var(--level-error)' : 'inherit' }}>
+                        {drawerMetrics.errorRate.toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="obs-drawer-item">
+                      <span className="obs-drawer-label">Avg Response Time</span>
+                      <span className="obs-drawer-value">{drawerMetrics.avgResponseTime.toFixed(1)} ms</span>
+                    </div>
+                    <div className="obs-drawer-item">
+                      <span className="obs-drawer-label">P95 Latency</span>
+                      <span className="obs-drawer-value">{drawerMetrics.p95Latency.toFixed(1)} ms</span>
+                    </div>
+                  </div>
+                ) : (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>No metrics data available</span>
+                )}
+              </div>
+
+              {/* Recent Alerts */}
+              <div className="obs-drawer-section">
+                <span className="obs-drawer-section-title">Recent Alerts</span>
+                {drawerAlertsLoading ? (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="upload-spinner" style={{ width: '12px', height: '12px' }} />
+                    Loading alerts...
+                  </div>
+                ) : drawerAlerts.length === 0 ? (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>No recent alerts triggered</span>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {drawerAlerts.map((alert, idx) => (
+                      <div key={idx} style={{ padding: '6px 8px', background: 'var(--surface-raised)', borderRadius: '3px', borderLeft: `2px solid ${alert.severity === 'CRITICAL' ? 'var(--level-error)' : 'var(--level-warn)'}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', fontWeight: 600, marginBottom: '2px' }}>
+                          <span style={{ color: alert.severity === 'CRITICAL' ? 'var(--level-error)' : 'var(--level-warn)' }}>{alert.severity}</span>
+                          <span style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                            {alert.timestamp ? new Date(alert.timestamp).toLocaleTimeString() : '—'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-primary)', wordBreak: 'break-all' }}>{alert.message}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Logs */}
+              <div className="obs-drawer-section">
+                <span className="obs-drawer-section-title">Recent Logs (1h)</span>
+                {drawerLogsLoading ? (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="upload-spinner" style={{ width: '12px', height: '12px' }} />
+                    Loading trace logs...
+                  </div>
+                ) : drawerLogs.length === 0 ? (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>No logs captured in last hour</span>
+                ) : (
+                  <div className="obs-drawer-logs-list">
+                    {drawerLogs.map((log, idx) => (
+                      <div key={log.id || idx} className="obs-drawer-log-row">
+                        <span style={{ color: 'var(--text-dim)' }}>
+                          [{log['@timestamp'] ? new Date(log['@timestamp']).toLocaleTimeString() : '—'}]
+                        </span>{' '}
+                        <span style={{ color: log.level === 'ERROR' ? 'var(--level-error)' : log.level === 'WARN' ? 'var(--level-warn)' : 'var(--text-secondary)', fontWeight: 600 }}>
+                          {log.level}
+                        </span>:{' '}
+                        {log.message}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
+      </div>
 
-        {/* Services Directory Section */}
-        <section className="glass-panel" style={{ border: 'none', background: 'transparent' }}>
-          <div className="services-section-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px' }}>
-            <h2>Approved Services Directory</h2>
-            {isAdmin && !showCreateInline && (
-              <button className="btn" disabled={submitting} onClick={openCreateInline}>
-                Add Service
-              </button>
-            )}
+      {/* CREATE SERVICE / REQUEST ACCESS MODAL */}
+      <Modal
+        open={showCreateModal}
+        title={isAdmin ? 'Add New Service' : 'Request Access to Service'}
+        onClose={() => {
+          setShowCreateModal(false);
+          setCreateForm(emptyServiceForm);
+          setActionError('');
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '4px 0' }}>
+          <div className="service-form-row">
+            <label htmlFor="service-name-input" style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Service Name</label>
+            <input
+              id="service-name-input"
+              ref={addNameInputRef}
+              className="form-control"
+              placeholder="e.g. auth-service"
+              value={createForm.name}
+              onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
+            />
           </div>
-
-          {actionError && !showCreateInline && (
-            <div style={{ marginBottom: '16px' }}>
-              <p className="error">{actionError}</p>
-            </div>
-          )}
-
-          {loading && <div className="state-message" style={{ padding: '2rem 0' }}>Loading services...</div>}
-          {!loading && loadError && (
-            <div className="state-message" style={{ padding: '2rem 0' }}>
-              <p className="error">{loadError}</p>
-            </div>
-          )}
-
-          {!loading && !loadError && (
-            <>
-              <div className="services-grid">
-                {services.map((service) => {
-                  const isActive = service.active !== false && service.status !== 'INACTIVE';
-                  const firstLetter = service.name ? service.name.charAt(0) : 'S';
-                  return (
-                    <div key={service.id || service.name} className="service-card">
-                      <div className="service-card-body">
-                        <div className="service-card-header">
-                          <div className="service-card-identity">
-                            <div className="service-card-avatar">{firstLetter}</div>
-                            <div className="service-card-name-wrapper">
-                              <span className="service-card-name" title={service.name}>
-                                {service.name}
-                              </span>
-                              <div>
-                                <span className={`tag ${isActive ? 'tag-debug' : 'tag-unassigned'}`}>
-                                  {service.status || (isActive ? 'ACTIVE' : 'INACTIVE')}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <p className="service-card-description">
-                          {service.description || 'No description provided.'}
-                        </p>
-
-                        <div className="service-card-owners-section">
-                          <h4 className="service-card-owners-title">Owners (Primary Owner)</h4>
-                          <div className="service-card-owners-list">
-                            {service.owners && service.owners.map((owner) => (
-                              <label
-                                key={owner.userId}
-                                className={`service-owner-item ${owner.primary ? 'primary-owner' : ''} ${
-                                  isAdmin ? 'owner-editable' : ''
-                                }`}
-                              >
-                                <input
-                                  type="radio"
-                                  className="service-owner-radio"
-                                  name={`primary-owner-${service.name}`}
-                                  checked={owner.primary}
-                                  disabled={submitting || !isAdmin}
-                                  onChange={() => void handleSetPrimaryOwner(service.name, owner.userId)}
-                                />
-                                <span>
-                                  {owner.username} {owner.primary && '(Primary)'}
-                                </span>
-                              </label>
-                            ))}
-                            {(!service.owners || service.owners.length === 0) && (
-                              <div>
-                                <span className="tag tag-unassigned">Unassigned</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {isAdmin && (
-                        <div className="service-card-footer">
-                          <button
-                            className="btn"
-                            onClick={() => openEdit(service)}
-                            disabled={!service.id}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="btn btn-danger"
-                            onClick={() => void removeService(service.id)}
-                            disabled={!service.id}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {!services.length && (
-                <div className="state-message" style={{ padding: '2rem 0' }}>
-                  No services available
-                </div>
-              )}
-            </>
-          )}
-        </section>
-
-        {/* Pending Requests Section */}
-        <section className="glass-panel" style={{ border: 'none', background: 'transparent', marginTop: '16px' }}>
-          <div className="services-section-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px' }}>
-            <h2>{isAdmin ? 'Pending Access Requests' : 'My Pending Access Requests'}</h2>
+          <div className="service-form-row">
+            <label htmlFor="service-desc-input" style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</label>
+            <input
+              id="service-desc-input"
+              className="form-control"
+              placeholder="Provide a brief description of the service"
+              value={createForm.description}
+              onChange={(e) => setCreateForm((prev) => ({ ...prev, description: e.target.value }))}
+            />
           </div>
-
-          {requestsLoading && <div className="state-message" style={{ padding: '1rem 0' }}>Loading requests...</div>}
-          {!requestsLoading && requestsError && (
-            <div className="state-message" style={{ padding: '1rem 0' }}>
-              <p className="error">{requestsError}</p>
-            </div>
-          )}
-
-          {!requestsLoading && !requestsError && (
-            <>
-              <div className="requests-grid">
-                {pendingRequests.map((request) => (
-                  <div key={request.id} className="request-card">
-                    <div className="request-card-body">
-                      <div className="request-card-header">
-                        <span className="request-card-title" title={request.serviceName}>
-                          {request.serviceName}
-                        </span>
-                        <span className={getStatusBadgeClass(request.status)}>
-                          {normalizedRequestStatus(request.status)}
-                        </span>
-                      </div>
-
-                      <div className="request-card-meta">
-                        <div className="request-card-meta-row">
-                          <span className="request-card-meta-label">Requested by:</span>
-                          <span className="request-card-meta-value" title={request.requestedByEmail}>
-                            {request.requestedByEmail}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="request-card-description">
-                        {request.description || 'No reason provided.'}
-                      </div>
-                    </div>
-
-                    {isAdmin && (
-                      <div className="request-card-footer">
-                        <button
-                          className="btn btn-danger"
-                          disabled={submitting}
-                          onClick={() => void rejectRequest(request)}
-                        >
-                          Reject
-                        </button>
-                        <button
-                          className="btn"
-                          style={{ background: 'var(--accent)', color: '#fff', border: 'none' }}
-                          disabled={submitting}
-                          onClick={() => void approveRequest(request)}
-                        >
-                          Approve
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {!pendingRequests.length && (
-                <div className="state-message" style={{ padding: '1rem 0' }}>
-                  No pending requests found
-                </div>
-              )}
-            </>
-          )}
-        </section>
-
-        {/* Rejected Requests Section */}
-        <section className="glass-panel" style={{ border: 'none', background: 'transparent', marginTop: '16px', marginBottom: '24px' }}>
-          <div className="services-section-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '16px' }}>
-            <h2>{isAdmin ? 'Rejected Access Requests' : 'My Rejected Access Requests'}</h2>
+          {actionError && <p className="error">{actionError}</p>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', marginTop: '4px' }}>
+            <button className="btn" type="button" onClick={() => setShowCreateModal(false)} disabled={submitting}>
+              Cancel
+            </button>
+            <button
+              className="btn"
+              style={{ background: 'var(--accent)', color: '#fff', border: 'none' }}
+              disabled={submitting}
+              onClick={() => void createService()}
+            >
+              {submitting ? 'Saving...' : (isAdmin ? 'Create Service' : 'Submit Request')}
+            </button>
           </div>
+        </div>
+      </Modal>
 
-          {requestsLoading && <div className="state-message" style={{ padding: '1rem 0' }}>Loading requests...</div>}
-          {!requestsLoading && requestsError && (
-            <div className="state-message" style={{ padding: '1rem 0' }}>
-              <p className="error">{requestsError}</p>
-            </div>
-          )}
-
-          {!requestsLoading && !requestsError && (
-            <>
-              <div className="requests-grid">
-                {rejectedRequests.map((request) => (
-                  <div key={request.id} className="request-card">
-                    <div className="request-card-body">
-                      <div className="request-card-header">
-                        <span className="request-card-title" title={request.serviceName}>
-                          {request.serviceName}
-                        </span>
-                        <span className={getStatusBadgeClass(request.status)}>
-                          {normalizedRequestStatus(request.status)}
-                        </span>
-                      </div>
-
-                      <div className="request-card-meta">
-                        <div className="request-card-meta-row">
-                          <span className="request-card-meta-label">Requested by:</span>
-                          <span className="request-card-meta-value" title={request.requestedByEmail}>
-                            {request.requestedByEmail}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="request-card-description" style={{ borderLeft: '2px solid var(--level-error)' }}>
-                        <strong style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Reason / Rejection Comment:</strong>
-                        <div style={{ marginTop: '4px' }}>
-                          {request.reviewComment || request.description || 'No comment provided.'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {!rejectedRequests.length && (
-                <div className="state-message" style={{ padding: '1rem 0' }}>
-                  No rejected requests found
-                </div>
-              )}
-            </>
-          )}
-        </section>
-      </section>
-
-      <Modal open={Boolean(editService)} title="Edit Service" onClose={() => setEditService(null)}>
+      {/* EDIT SERVICE DETAILS MODAL (ADMIN ONLY) */}
+      <Modal open={Boolean(editService)} title="Edit Service Details" onClose={() => setEditService(null)}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '4px 0' }}>
           <div className="service-form-row">
             <label htmlFor="edit-service-name-input" style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Service Name</label>

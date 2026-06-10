@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { apiService, extractApiErrorMessage } from '../services/api';
 import type { JiraConfiguration, UserJiraMapping, JiraUser } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 export default function JiraIntegrationPage() {
-  const [activeTab, setActiveTab] = useState<'config' | 'mappings'>('config');
+  const { isAdmin } = useAuth();
+  const [activeTab, setActiveTab] = useState<'config' | 'mappings'>(isAdmin ? 'config' : 'mappings');
 
   // Configuration States
   const [config, setConfig] = useState<JiraConfiguration>({
@@ -25,6 +27,12 @@ export default function JiraIntegrationPage() {
   const [mappingsLoading, setMappingsLoading] = useState<boolean>(true);
   const [mappingsError, setMappingsError] = useState<string>('');
   const [mappingUpdatingUserId, setMappingUpdatingUserId] = useState<string | null>(null);
+
+  // For manual input mode (useful when dropdown is empty or user wants to specify manually)
+  const [isManual, setIsManual] = useState<boolean>(false);
+  const [manualAccountId, setManualAccountId] = useState<string>('');
+  const [manualDisplayName, setManualDisplayName] = useState<string>('');
+  const [mappingsSuccess, setMappingsSuccess] = useState<string>('');
 
   // Load Jira Configuration
   const loadConfig = async () => {
@@ -55,17 +63,28 @@ export default function JiraIntegrationPage() {
     try {
       setMappingsLoading(true);
       setMappingsError('');
+      setMappingsSuccess('');
       
       const mappingData = await apiService.getUserJiraMappings();
       setMappings(mappingData);
+
+      // Prepopulate states for Developer form if we are a dev and mapping exists
+      if (!isAdmin && mappingData.length > 0) {
+        const myMapping = mappingData[0];
+        setManualAccountId(myMapping.jiraAccountId || '');
+        setManualDisplayName(myMapping.jiraDisplayName || '');
+      }
 
       // Load Jira users from active configuration
       try {
         const userData = await apiService.getJiraUsers();
         setJiraUsers(userData);
+        if (userData.length === 0) {
+          setIsManual(true);
+        }
       } catch (userErr) {
         console.error('Failed to fetch Jira users (Jira config might be missing/invalid):', userErr);
-        setMappingsError('Jira Connection is required to load Jira users. Please verify Tab 1 Configuration.');
+        setIsManual(true);
       }
     } catch (err) {
       setMappingsError(extractApiErrorMessage(err, 'Failed to load mappings'));
@@ -157,6 +176,66 @@ export default function JiraIntegrationPage() {
     }
   };
 
+  const handleSaveDeveloperMapping = async () => {
+    const myMapping = mappings[0];
+    if (!myMapping) return;
+
+    let accountId = '';
+    let displayName = '';
+
+    if (isManual) {
+      if (!manualAccountId.trim() || !manualDisplayName.trim()) {
+        setMappingsError('Both Jira Account ID and Display Name are required for manual mapping.');
+        return;
+      }
+      accountId = manualAccountId.trim();
+      displayName = manualDisplayName.trim();
+    } else {
+      // Dropdown mode
+      const selected = jiraUsers.find(u => u.accountId === manualAccountId);
+      if (!selected) {
+        setMappingsError('Please select a Jira User.');
+        return;
+      }
+      accountId = selected.accountId;
+      displayName = selected.displayName;
+    }
+
+    try {
+      setMappingUpdatingUserId(myMapping.userId);
+      setMappingsError('');
+      setMappingsSuccess('');
+
+      if (myMapping.id) {
+        // Update
+        await apiService.updateUserJiraMapping(myMapping.id, {
+          userId: myMapping.userId,
+          jiraAccountId: accountId,
+          jiraDisplayName: displayName,
+          active: true
+        });
+      } else {
+        // Create
+        await apiService.createUserJiraMapping({
+          userId: myMapping.userId,
+          jiraAccountId: accountId,
+          jiraDisplayName: displayName,
+          active: true
+        });
+      }
+      
+      setMappingsSuccess('Mapping saved successfully!');
+      
+      // Reload mappings
+      const mappingData = await apiService.getUserJiraMappings();
+      setMappings(mappingData);
+    } catch (err) {
+      setMappingsError(extractApiErrorMessage(err, 'Failed to save mapping'));
+    } finally {
+      setMappingUpdatingUserId(null);
+    }
+  };
+
   const handleMappingChange = async (userId: string, mappingId: string | undefined, newAccountId: string) => {
     try {
       setMappingUpdatingUserId(userId);
@@ -206,21 +285,23 @@ export default function JiraIntegrationPage() {
         {/* Tab Selection */}
         <section className="glass-panel" style={{ minHeight: 'auto', marginBottom: '1rem', padding: '0.5rem 1rem' }}>
           <div className="ld-tabs" role="tablist" style={{ borderBottom: 'none', margin: 0 }}>
-            <button
-              role="tab"
-              aria-selected={activeTab === 'config'}
-              className={`ld-tab${activeTab === 'config' ? ' ld-tab-active' : ''}`}
-              onClick={() => setActiveTab('config')}
-            >
-              Jira Configuration
-            </button>
+            {isAdmin && (
+              <button
+                role="tab"
+                aria-selected={activeTab === 'config'}
+                className={`ld-tab${activeTab === 'config' ? ' ld-tab-active' : ''}`}
+                onClick={() => setActiveTab('config')}
+              >
+                Jira Configuration
+              </button>
+            )}
             <button
               role="tab"
               aria-selected={activeTab === 'mappings'}
               className={`ld-tab${activeTab === 'mappings' ? ' ld-tab-active' : ''}`}
               onClick={() => setActiveTab('mappings')}
             >
-              User Jira Mappings
+              {isAdmin ? 'User Jira Mappings' : 'My Jira Mapping'}
             </button>
           </div>
         </section>
@@ -323,7 +404,7 @@ export default function JiraIntegrationPage() {
         {/* Tab 2: User Jira Mappings */}
         {activeTab === 'mappings' && (
           <section className="glass-panel table-container">
-            <div className="table-header"><h2>User Jira Mappings</h2></div>
+            <div className="table-header"><h2>{isAdmin ? 'User Jira Mappings' : 'My Jira Mapping'}</h2></div>
             {mappingsError && (
               <div className="table-scroll-area" style={{ padding: '1rem 1.5rem 0 1.5rem' }}>
                 <p className="error">{mappingsError}</p>
@@ -332,50 +413,149 @@ export default function JiraIntegrationPage() {
             {mappingsLoading ? (
               <div className="table-scroll-area state-message">Loading owners & mappings...</div>
             ) : (
-              <div className="table-scroll-area">
-                <table className="log-table">
-                  <thead>
-                    <tr>
-                      <th>User Name</th>
-                      <th>Owned Services</th>
-                      <th>Jira User Assignee</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {mappings.map((mapping) => (
-                      <tr key={mapping.userId}>
-                        <td>{mapping.username || mapping.userId}</td>
-                        <td>{mapping.ownedServices || '—'}</td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <select
-                              className="form-control"
-                              value={mapping.jiraAccountId || ''}
-                              onChange={(e) => void handleMappingChange(mapping.userId, mapping.id, e.target.value)}
-                              disabled={mappingUpdatingUserId === mapping.userId}
-                              style={{ maxWidth: '300px' }}
-                            >
-                              <option value="">— Unmapped —</option>
-                              {jiraUsers.map(user => (
-                                <option key={user.accountId} value={user.accountId}>
-                                  {user.displayName}
-                                </option>
-                              ))}
-                            </select>
-                            {mappingUpdatingUserId === mapping.userId && (
-                              <span className="upload-spinner" style={{ borderTopColor: 'var(--accent)' }} />
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {!mappings.length && (
-                      <tr>
-                        <td colSpan={3}>No users own any services. Assign services to users first.</td>
-                      </tr>
+              <div className="table-scroll-area" style={{ padding: '1.5rem' }}>
+                {!isAdmin ? (
+                  /* Developer Single-User Form */
+                  <div style={{ maxWidth: '600px', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                    <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                      Link your local user account to your Jira account so that alert stories can be correctly assigned to you.
+                    </p>
+
+                    <div className="filter-group">
+                      <label>Local User Account</label>
+                      <input
+                        className="form-control"
+                        value={mappings[0]?.username || mappings[0]?.userId || ''}
+                        disabled
+                        style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
+                      />
+                    </div>
+
+                    {isManual ? (
+                      <>
+                        <div className="filter-group">
+                          <label>Jira Account ID</label>
+                          <input
+                            className="form-control"
+                            placeholder="e.g. 5b10ac8d14e1f72a39e8e2d4"
+                            value={manualAccountId}
+                            onChange={(e) => setManualAccountId(e.target.value)}
+                          />
+                        </div>
+                        <div className="filter-group">
+                          <label>Jira Display Name</label>
+                          <input
+                            className="form-control"
+                            placeholder="e.g. John Doe"
+                            value={manualDisplayName}
+                            onChange={(e) => setManualDisplayName(e.target.value)}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="filter-group">
+                        <label>Jira User Assignee</label>
+                        <select
+                          className="form-control"
+                          value={manualAccountId}
+                          onChange={(e) => setManualAccountId(e.target.value)}
+                        >
+                          <option value="">— Select Jira User —</option>
+                          {jiraUsers.map(user => (
+                            <option key={user.accountId} value={user.accountId}>
+                              {user.displayName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     )}
-                  </tbody>
-                </table>
+
+                    {jiraUsers.length > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <button
+                          className="btn-link"
+                          onClick={() => {
+                            setIsManual(!isManual);
+                            setMappingsError('');
+                          }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--accent)',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            padding: 0,
+                            textDecoration: 'underline'
+                          }}
+                        >
+                          {isManual ? 'Select from Jira User list instead' : 'Enter Jira Account ID manually'}
+                        </button>
+                      </div>
+                    )}
+
+                    {mappingsSuccess && (
+                      <p style={{ color: 'var(--level-debug)', margin: 0, fontWeight: 500 }}>
+                        {mappingsSuccess}
+                      </p>
+                    )}
+
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <button
+                        className="btn"
+                        onClick={() => void handleSaveDeveloperMapping()}
+                        disabled={mappingUpdatingUserId !== null}
+                        style={{ backgroundColor: 'var(--accent)', color: '#fff' }}
+                      >
+                        {mappingUpdatingUserId !== null ? 'Saving...' : 'Save Mapping'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Admin Table View */
+                  <table className="log-table" style={{ margin: 0 }}>
+                    <thead>
+                      <tr>
+                        <th>User Name</th>
+                        <th>Owned Services</th>
+                        <th>Jira User Assignee</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mappings.map((mapping) => (
+                        <tr key={mapping.userId}>
+                          <td>{mapping.username || mapping.userId}</td>
+                          <td>{mapping.ownedServices || '—'}</td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <select
+                                className="form-control"
+                                value={mapping.jiraAccountId || ''}
+                                onChange={(e) => void handleMappingChange(mapping.userId, mapping.id, e.target.value)}
+                                disabled={mappingUpdatingUserId === mapping.userId}
+                                style={{ maxWidth: '300px' }}
+                              >
+                                <option value="">— Unmapped —</option>
+                                {jiraUsers.map(user => (
+                                  <option key={user.accountId} value={user.accountId}>
+                                    {user.displayName}
+                                  </option>
+                                ))}
+                              </select>
+                              {mappingUpdatingUserId === mapping.userId && (
+                                <span className="upload-spinner" style={{ borderTopColor: 'var(--accent)' }} />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {!mappings.length && (
+                        <tr>
+                          <td colSpan={3}>No users own any services. Assign services to users first.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
           </section>

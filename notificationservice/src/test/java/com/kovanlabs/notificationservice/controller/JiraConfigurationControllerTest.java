@@ -162,4 +162,43 @@ class JiraConfigurationControllerTest {
                 .andExpect(jsonPath("$[0].accountId", is("acc123")))
                 .andExpect(jsonPath("$[0].displayName", is("Arun Kumar")));
     }
+
+    @Test
+    void createConfiguration_asDev_returnsForbidden() throws Exception {
+        JiraConfigurationRequest req = new JiraConfigurationRequest(
+                "https://company.atlassian.net", "arun@company.com", "fake-token-1234", "PAY", true
+        );
+
+        mockMvc.perform(post("/api/jira/configuration")
+                        .header("X-User-Role", "DEV")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void updateConfiguration_asDev_returnsForbidden() throws Exception {
+        JiraConfigurationRequest req = new JiraConfigurationRequest(
+                "https://new-company.atlassian.net", null, null, null, null
+        );
+
+        mockMvc.perform(put("/api/jira/configuration")
+                        .header("X-User-Role", "DEV")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void testConnection_asDev_returnsForbidden() throws Exception {
+        JiraConfigurationRequest req = new JiraConfigurationRequest(
+                "https://company.atlassian.net", "arun@company.com", "fake-token-1234", "PAY", true
+        );
+
+        mockMvc.perform(post("/api/jira/test-connection")
+                        .header("X-User-Role", "DEV")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
 }

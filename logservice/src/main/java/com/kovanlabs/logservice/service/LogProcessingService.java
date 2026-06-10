@@ -1,6 +1,14 @@
 package com.kovanlabs.logservice.service;
 
+import java.time.Instant;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.HashMap;
+import java.util.Comparator;
 import java.util.stream.Collectors;
+import java.util.Arrays;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +32,6 @@ public class LogProcessingService {
     private final WebSocketSessionTracker sessionTracker;
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationServiceClient notificationServiceClient;
-    private final ErrorSuggestionService errorSuggestionService;
     private final ObjectMapper objectMapper;
 
     public LogProcessingService(ElasticSearchService elasticSearchService,
@@ -33,8 +40,7 @@ public class LogProcessingService {
                                 RedisLogService redisLogService,
                                 WebSocketSessionTracker sessionTracker,
                                 SimpMessagingTemplate messagingTemplate,
-                                NotificationServiceClient notificationServiceClient,
-                                ErrorSuggestionService errorSuggestionService) {
+                                NotificationServiceClient notificationServiceClient) {
         this.elasticSearchService = elasticSearchService;
         this.mongoLogEventRepository = mongoLogEventRepository;
         this.serviceApprovalClient = serviceApprovalClient;
@@ -42,7 +48,6 @@ public class LogProcessingService {
         this.sessionTracker = sessionTracker;
         this.messagingTemplate = messagingTemplate;
         this.notificationServiceClient = notificationServiceClient;
-        this.errorSuggestionService = errorSuggestionService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -61,26 +66,21 @@ public class LogProcessingService {
     }
 
     public void processLogEvent(LogEvent logEvent) {
-        long start = System.currentTimeMillis();
+        if (logEvent == null) {
+            LOGGER.warn("Received null LogEvent, skipping");
+            return;
+        }
+
+        if (!serviceApprovalClient.isApproved(logEvent.getService())) {
+//            LOGGER.info("Discarding log from unapproved service: {}", logEvent.getService());
+            return;
+        }
+
         try {
-            if (logEvent == null) {
-                LOGGER.warn("Received null LogEvent, skipping");
-                return;
-            }
-
-            if (!serviceApprovalClient.isApproved(logEvent.getService())) {
-                LOGGER.info("Discarding log from unapproved service: {}", logEvent.getService());
-                return;
-            }
-
-            String level = logEvent.getLevel();
-            if (level != null && "ERROR".equalsIgnoreCase(level.trim())) {
-                errorSuggestionService.attachSuggestion(logEvent);
-            }
-
             mongoLogEventRepository.save(logEvent);
             boolean esSaved = elasticSearchService.save(logEvent);
 
+            String level = logEvent.getLevel();
             if (level != null && ("ERROR".equalsIgnoreCase(level.trim()) || "CRITICAL".equalsIgnoreCase(level.trim()) || "FATAL".equalsIgnoreCase(level.trim()))) {
                 redisLogService.saveLatestError(new LogDto(logEvent));
                 notificationServiceClient.sendAlert(logEvent.getService(), logEvent.getMessage(), level);

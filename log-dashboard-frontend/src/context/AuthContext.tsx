@@ -44,6 +44,7 @@ function normalizeAuthPayload(payload: any): AuthUser {
   const role = payload.role || (roles.length > 0 ? roles[0] : 'DEV');
 
   return {
+    id: payload.userId || '',
     authenticated,
     name: payload.name || email,
     email,

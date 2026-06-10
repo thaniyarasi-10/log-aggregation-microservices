@@ -1,10 +1,10 @@
 <configuration>
 
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>C:/Users/bvign/IdeaProjects/log-aggregation-microservices-developed/log-aggregation-microservices/logs/log-service.log</file>
+        <file>D:\log-aggregation-microservices\logservice\logs/log-service.log</file>
 
-        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>C:/Users/bvign/IdeaProjects/log-aggregation-microservices-developed/log-aggregation-microservices/logs/log-service-%d{yyyy-MM-dd}.log</fileNamePattern>
+         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>log-service-%d{yyyy-MM-dd}.log</fileNamePattern>
             <maxHistory>7</maxHistory>
         </rollingPolicy>
 

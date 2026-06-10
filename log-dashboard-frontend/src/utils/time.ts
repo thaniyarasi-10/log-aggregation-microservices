@@ -45,3 +45,12 @@ export function buildLogQueryParams(filters: LogFilters): LogQueryParams {
 
   return params;
 }
+
+export function getLogFingerprint(log: any): string {
+  if (!log) return '';
+  const ts = log['@timestamp'] || '';
+  const svc = log.service || '';
+  const lvl = log.level || '';
+  const msg = log.message || '';
+  return `${ts}|${svc}|${lvl}|${msg}`;
+}

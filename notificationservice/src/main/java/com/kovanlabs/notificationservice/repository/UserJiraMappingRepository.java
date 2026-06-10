@@ -14,6 +14,9 @@ public interface UserJiraMappingRepository extends JpaRepository<UserJiraMapping
 
     Optional<UserJiraMapping> findByUserId(String userId);
 
+    @Query(value = "SELECT username FROM app_user WHERE id = :userId", nativeQuery = true)
+    Optional<String> findUsernameByUserId(@Param("userId") String userId);
+
     @Query(value = "SELECT DISTINCT u.email FROM user_service_mapping usm " +
                    "JOIN app_user u ON usm.user_id = u.id " +
                    "JOIN app_service s ON usm.service_id = s.id " +
