@@ -164,15 +164,16 @@ public class ElasticRepository {
     private boolean isValidForIndexing(LogEvent log) {
         // @timestamp must be a valid ISO-8601 instant — ES will reject anything else
         if (log.getTimestamp() != null && !log.getTimestamp().isBlank()) {
-            try {
-                Instant.parse(log.getTimestamp());
-            } catch (java.time.format.DateTimeParseException e) {
+            Instant parsed = parseInstantOrNull(log.getTimestamp());
+            if (parsed == null) {
                 LOGGER.error("ES SAVE SKIPPED — invalid @timestamp '{}' for service='{}'. " +
                         "Expected ISO-8601 format (e.g. 2026-05-12T10:00:00Z). " +
                         "This document would cause a mapping conflict and has been dropped.",
                         log.getTimestamp(), log.getService());
                 return false;
             }
+            // Normalize to UTC string for Elasticsearch compatibility
+            log.setTimestamp(parsed.toString());
         }
 
         // service and message are the minimum fields needed for a useful log entry.
@@ -353,8 +354,8 @@ public class ElasticRepository {
             if (!hasAnyLogIndexes()) {
                 return new ArrayList<>();
             }
-            LOGGER.debug("SEARCH MULTI → services={} levels={} environment={} traceId={} message={}",
-                    services, levels, environment, traceId, message);
+//            LOGGER.debug("SEARCH MULTI → services={} levels={} environment={} traceId={} message={}",
+//                    services, levels, environment, traceId, message);
 
             TimeBounds bounds = resolveTimeBounds(from, to);
             BoolQuery.Builder boolQueryBuilder = QueryBuilders.bool();
@@ -564,7 +565,7 @@ public class ElasticRepository {
 
     private SearchRequest buildMetricsRequest(String services, String environment, String levels, String message, TimeBounds bounds, String interval, AuthenticatedUserContext accessContext) {
         BoolQuery boolQuery = BoolQuery.of(b -> b.filter(buildMetricFilters(services, environment, levels, message, bounds, accessContext)));
-        LOGGER.debug("ES METRICS QUERY → {}", boolQuery._toQuery());
+//        LOGGER.debug("ES METRICS QUERY → {}", boolQuery._toQuery());
 
         return SearchRequest.of(s -> s
                 .index(INDEX_PATTERN)
@@ -1198,6 +1199,88 @@ public class ElasticRepository {
         } catch (Exception e) {
             LOGGER.error("Elasticsearch query failed [{}]: {}", operation, e.getMessage(), e);
             throw new RuntimeException("Elasticsearch query failure", e);
+        }
+    }
+
+    public List<com.kovanlabs.logservice.model.ServiceLogMetrics> getServiceHealthMetrics(int windowMinutes) {
+        try {
+            if (!hasAnyLogIndexes()) {
+                LOGGER.info("No app-logs-* indexes exist in Elasticsearch. Returning empty metrics.");
+                return new ArrayList<>();
+            }
+
+            Instant now = Instant.now();
+            Instant from = now.minus(windowMinutes, ChronoUnit.MINUTES);
+
+            Query timeFilter = RangeQuery.of(r -> r
+                    .field("@timestamp")
+                    .gte(JsonData.of(from.toString()))
+                    .lte(JsonData.of(now.toString())))._toQuery();
+
+            SearchRequest request = SearchRequest.of(s -> s
+                    .index(INDEX_PATTERN)
+                    .query(timeFilter)
+                    .size(0)
+                    .aggregations("services", a -> a
+                            .terms(t -> t
+                                    .field(SERVICE_FIELD)
+                                    .size(200)
+                            )
+                            .aggregations("error_count", sub -> sub
+                                    .filter(f -> f
+                                            .term(term -> term
+                                                    .field(LEVEL_FIELD)
+                                                    .value("error"))))
+                            .aggregations("warn_count", sub -> sub
+                                    .filter(f -> f
+                                            .term(term -> term
+                                                    .field(LEVEL_FIELD)
+                                                    .value("warn"))))
+                            .aggregations("latest_timestamp", sub -> sub
+                                    .max(m -> m
+                                            .field("@timestamp")))));
+
+            SearchResponse<Void> response = client.search(request, Void.class);
+
+            if (response.aggregations() == null || response.aggregations().get("services") == null) {
+                return new ArrayList<>();
+            }
+
+            return response.aggregations()
+                    .get("services")
+                    .sterms()
+                    .buckets()
+                    .array()
+                    .stream()
+                    .map(bucket -> {
+                        String serviceName = bucket.key().stringValue();
+                        long errorCount = 0;
+                        long warnCount = 0;
+                        Instant lastSeen = null;
+
+                        if (bucket.aggregations() != null) {
+                            if (bucket.aggregations().get("error_count") != null) {
+                                errorCount = bucket.aggregations().get("error_count").filter().docCount();
+                            }
+                            if (bucket.aggregations().get("warn_count") != null) {
+                                warnCount = bucket.aggregations().get("warn_count").filter().docCount();
+                            }
+                            if (bucket.aggregations().get("latest_timestamp") != null) {
+                                double maxVal = bucket.aggregations().get("latest_timestamp").max().value();
+                                if (Double.isFinite(maxVal) && maxVal > 0) {
+                                    lastSeen = Instant.ofEpochMilli((long) maxVal);
+                                }
+                            }
+                        }
+
+                        return new com.kovanlabs.logservice.model.ServiceLogMetrics(serviceName, errorCount, warnCount, lastSeen);
+                    })
+                    .filter(Objects::nonNull)
+                    .toList();
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to fetch service health metrics from Elasticsearch: {}", e.getMessage(), e);
+            return new ArrayList<>();
         }
     }
 }

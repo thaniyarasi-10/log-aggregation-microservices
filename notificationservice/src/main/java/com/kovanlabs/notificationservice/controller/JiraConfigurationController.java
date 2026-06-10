@@ -11,10 +11,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.kovanlabs.notificationservice.dto.JiraConfigurationRequest;
 import com.kovanlabs.notificationservice.dto.JiraConfigurationView;
 import com.kovanlabs.notificationservice.dto.JiraUserDto;
@@ -25,6 +28,8 @@ import com.kovanlabs.notificationservice.service.JiraClient;
 @RestController
 @RequestMapping("/api/jira")
 public class JiraConfigurationController {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(JiraConfigurationController.class);
 
     private final JiraConfigurationRepository repository;
     private final JiraClient jiraClient;
@@ -44,7 +49,13 @@ public class JiraConfigurationController {
     }
 
     @PostMapping("/configuration")
-    public ResponseEntity<?> createConfiguration(@RequestBody JiraConfigurationRequest request) {
+    public ResponseEntity<?> createConfiguration(
+            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestBody JiraConfigurationRequest request) {
+        if (userRole != null && !"ADMIN".equalsIgnoreCase(userRole)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only administrators can manage Jira connection configuration");
+        }
+
         if (request.jiraBaseUrl() == null || request.jiraBaseUrl().isBlank()) {
             return ResponseEntity.badRequest().body("jiraBaseUrl is required");
         }
@@ -77,7 +88,13 @@ public class JiraConfigurationController {
     }
 
     @PutMapping("/configuration")
-    public ResponseEntity<?> updateConfiguration(@RequestBody JiraConfigurationRequest request) {
+    public ResponseEntity<?> updateConfiguration(
+            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestBody JiraConfigurationRequest request) {
+        if (userRole != null && !"ADMIN".equalsIgnoreCase(userRole)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only administrators can manage Jira connection configuration");
+        }
+
         JiraConfiguration config = repository.findFirstByActiveTrue()
                 .or(() -> repository.findAll().stream().findFirst())
                 .orElseGet(() -> {
@@ -105,7 +122,13 @@ public class JiraConfigurationController {
     }
 
     @PostMapping("/test-connection")
-    public ResponseEntity<?> testConnection(@RequestBody JiraConfigurationRequest request) {
+    public ResponseEntity<?> testConnection(
+            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestBody JiraConfigurationRequest request) {
+        if (userRole != null && !"ADMIN".equalsIgnoreCase(userRole)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only administrators can manage Jira connection configuration");
+        }
+
         if (request.jiraBaseUrl() == null || request.jiraBaseUrl().isBlank()) {
             return ResponseEntity.badRequest().body("Jira Base URL is required");
         }
@@ -137,8 +160,10 @@ public class JiraConfigurationController {
 
     @GetMapping("/users")
     public ResponseEntity<?> getJiraUsers(@RequestParam(value = "query", required = false) String query) {
-        JiraConfiguration config = repository.findFirstByActiveTrue()
-                .orElseThrow(() -> new IllegalArgumentException("No active Jira configuration found. Please configure Jira connection first."));
+        JiraConfiguration config = repository.findFirstByActiveTrue().orElse(null);
+        if (config == null) {
+            return ResponseEntity.ok(List.of());
+        }
 
         try {
             List<JiraUserDto> users = jiraClient.searchAssignableUsers(
@@ -149,11 +174,9 @@ public class JiraConfigurationController {
                     query
             );
             return ResponseEntity.ok(users);
-        } catch (IllegalArgumentException ex) {
-            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Failed to lookup Jira users: " + ex.getMessage()));
+            LOGGER.warn("Failed to lookup Jira users (Jira connection or project key might be invalid): {}", ex.getMessage());
+            return ResponseEntity.ok(List.of());
         }
     }
 

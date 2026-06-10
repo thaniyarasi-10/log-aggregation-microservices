@@ -3,6 +3,8 @@ package com.kovanlabs.logservice.service;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
+import static com.kovanlabs.logservice.controller.LogController.LOGGER;
+
 @Component
 public class AppLogKafkaConsumer {
 
@@ -15,5 +17,6 @@ public class AppLogKafkaConsumer {
     @KafkaListener(topics = "app-logs", groupId = "logservice-group")
     public void consume(String payload) {
         logProcessingService.process(payload);
+//        LOGGER.info("KAFKA RECEIVED -> {}", payload);
     }
 }

@@ -16,6 +16,7 @@ import type {
   NotificationPreferenceUpdate,
   ServiceAccessRequest,
   ServiceRecord,
+  ServiceHealth,
   UserRecord
 } from '../types';
 import { buildLogQueryParams } from '../utils/time';
@@ -542,6 +543,36 @@ export const apiService = {
       }
     });
     return response.data;
+  },
+
+  async getServiceHealth(): Promise<ServiceHealth[]> {
+    const data = await getByPaths<ServiceHealth[]>(['/api/services/health', '/services/health']);
+    return Array.isArray(data) ? data : [];
+  },
+
+  async triggerJiraStory(payload: {
+    alertId: string;
+    alertName: string;
+    serviceName: string;
+    priority: string;
+    triggeredAt: string;
+    alertRule: string;
+    observedValue: string;
+    threshold: string;
+    timeWindow: string;
+    errorCount: number;
+    topErrors: string;
+    alertUrl: string;
+  }): Promise<{ status: string; message: string; jiraIssueKey?: string; jiraIssueUrl?: string }> {
+    const response = await api.post('/notifications/jira/stories', payload);
+    return response.data;
+  },
+
+  async getLogsServiceHealth(windowMinutes = 15): Promise<any[]> {
+    const data = await getByPaths<any[]>(['/api/logs/service-health', '/logs/service-health'], {
+      params: { windowMinutes }
+    });
+    return Array.isArray(data) ? data : [];
   }
 };
 

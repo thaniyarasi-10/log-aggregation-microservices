@@ -2,13 +2,17 @@ filebeat.inputs:
   - type: log
     enabled: true
     paths:
-      - /logs/*.log
+      - "logs/*.log"
+      - "gateway-service/logs/*.log"
+      - "logservice/logs/*.log"
+      - "notificationservice/logs/*.log"
+      - "servicemanagementservice/logs/*.log"
     json.keys_under_root: true
     json.overwrite_keys: true
     json.add_error_key: true
 
 output.kafka:
-  hosts: ["kafka:9092"]
+  hosts: ["172.16.30.10:9092"]
   topic: "app-logs"
   codec.json:
     pretty: false

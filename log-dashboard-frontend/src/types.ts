@@ -107,6 +107,12 @@ export interface ServiceRecord {
   owners?: ServiceOwner[];
 }
 
+export interface ServiceHealth {
+  service: string;
+  status: 'OK' | 'WARNING' | 'ERROR' | 'NO_DATA';
+  lastSeen: string | null;
+}
+
 export interface ServiceAccessRequest {
   id: string;
   requestedByUserId: string;
@@ -120,6 +126,7 @@ export interface ServiceAccessRequest {
 }
 
 export interface AuthUser {
+  id?: string;
   authenticated: boolean;
   name?: string;
   email?: string;

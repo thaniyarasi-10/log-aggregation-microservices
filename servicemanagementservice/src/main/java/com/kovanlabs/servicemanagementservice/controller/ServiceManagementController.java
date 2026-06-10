@@ -16,21 +16,31 @@ import org.springframework.web.bind.annotation.RestController;
 import com.kovanlabs.servicemanagementservice.dto.ServiceRequestCreateRequest;
 import com.kovanlabs.servicemanagementservice.dto.ServiceRequestView;
 import com.kovanlabs.servicemanagementservice.dto.ServiceSummaryView;
+import com.kovanlabs.servicemanagementservice.dto.ServiceHealthView;
 import com.kovanlabs.servicemanagementservice.service.ServiceRequestWorkflowService;
+import com.kovanlabs.servicemanagementservice.service.ServiceHealthService;
 
 @RestController
 @RequestMapping("/api/services")
 public class ServiceManagementController {
 
     private final ServiceRequestWorkflowService workflowService;
+    private final ServiceHealthService healthService;
 
-    public ServiceManagementController(ServiceRequestWorkflowService workflowService) {
+    public ServiceManagementController(ServiceRequestWorkflowService workflowService,
+                                       ServiceHealthService healthService) {
         this.workflowService = workflowService;
+        this.healthService = healthService;
     }
 
     @GetMapping
     public ResponseEntity<List<ServiceSummaryView>> services() {
         return ResponseEntity.ok(workflowService.listServices());
+    }
+
+    @GetMapping("/health")
+    public ResponseEntity<List<ServiceHealthView>> getServicesHealth() {
+        return ResponseEntity.ok(healthService.getServicesHealth());
     }
 
     @GetMapping("/details")

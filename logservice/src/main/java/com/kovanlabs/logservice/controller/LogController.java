@@ -14,6 +14,7 @@ import com.kovanlabs.logservice.auth.UserRole;
 import com.kovanlabs.logservice.model.LogDto;
 import com.kovanlabs.logservice.model.LogEvent;
 import com.kovanlabs.logservice.model.AlertItemView;
+import com.kovanlabs.logservice.model.ServiceLogMetrics;
 import com.kovanlabs.logservice.repository.ElasticRepository;
 import com.kovanlabs.logservice.service.LogProcessingService;
 import com.kovanlabs.logservice.service.RedisLogService;
@@ -33,7 +34,7 @@ import java.util.Map;
 @RequestMapping({"/logs", "/api/logs"})
 public class LogController {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(LogController.class);
+    public static final Logger LOGGER = LoggerFactory.getLogger(LogController.class);
 
     private final LogProcessingService processingService;
     private final RedisLogService redisLogService;
@@ -266,6 +267,14 @@ public class LogController {
 
         Map<String, List<AlertItemView>> alerts = elasticRepository.calculateAlerts(context);
         return ResponseEntity.ok(alerts);
+    }
+
+    @GetMapping("/service-health")
+    public ResponseEntity<List<ServiceLogMetrics>> getServiceHealth(
+            @RequestParam(value = "windowMinutes", defaultValue = "15") int windowMinutes) {
+        LOGGER.info("REST request to get service health metrics for last {} minutes", windowMinutes);
+        List<ServiceLogMetrics> metrics = elasticRepository.getServiceHealthMetrics(windowMinutes);
+        return ResponseEntity.ok(metrics);
     }
 
     @GetMapping("/source-code")

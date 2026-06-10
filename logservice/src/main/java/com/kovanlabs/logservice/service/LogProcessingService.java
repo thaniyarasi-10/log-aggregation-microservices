@@ -72,7 +72,7 @@ public class LogProcessingService {
         }
 
         if (!serviceApprovalClient.isApproved(logEvent.getService())) {
-            LOGGER.info("Discarding log from unapproved service: {}", logEvent.getService());
+//            LOGGER.info("Discarding log from unapproved service: {}", logEvent.getService());
             return;
         }
 
