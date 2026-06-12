@@ -33,6 +33,21 @@ public class AppService {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @Column(name = "service_secret", unique = true)
+    private String serviceSecret;
+
+    @Column(name = "secret_generated_at")
+    private LocalDateTime secretGeneratedAt;
+
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId;
+
+    @Column(name = "api_key", unique = true)
+    private String apiKey;
+
+    @Column(name = "api_key_generated_at")
+    private LocalDateTime apiKeyGeneratedAt;
+
     public UUID getId() {
         return id;
     }
@@ -79,5 +94,45 @@ public class AppService {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getServiceSecret() {
+        return serviceSecret;
+    }
+
+    public void setServiceSecret(String serviceSecret) {
+        this.serviceSecret = serviceSecret;
+    }
+
+    public LocalDateTime getSecretGeneratedAt() {
+        return secretGeneratedAt;
+    }
+
+    public void setSecretGeneratedAt(LocalDateTime secretGeneratedAt) {
+        this.secretGeneratedAt = secretGeneratedAt;
+    }
+
+    public UUID getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(UUID organizationId) {
+        this.organizationId = organizationId;
+    }
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public void setApiKey(String apiKey) {
+        this.apiKey = apiKey;
+    }
+
+    public LocalDateTime getApiKeyGeneratedAt() {
+        return apiKeyGeneratedAt;
+    }
+
+    public void setApiKeyGeneratedAt(LocalDateTime apiKeyGeneratedAt) {
+        this.apiKeyGeneratedAt = apiKeyGeneratedAt;
     }
 }

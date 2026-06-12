@@ -150,7 +150,7 @@ public class LogServiceIntegrationTest {
 
     @Test
     void testLatestErrorsRedisFallbackToElasticsearch() throws Exception {
-        when(redisLogService.getLatestErrors()).thenThrow(new RuntimeException("Redis connection refused"));
+        when(redisLogService.getLatestErrors(any())).thenThrow(new RuntimeException("Redis connection refused"));
         
         when(elasticRepository.searchMulti(
                 any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), any()
@@ -163,7 +163,7 @@ public class LogServiceIntegrationTest {
                 .andExpect(jsonPath("$[0].message").value("TIME_RANGE_TEST"));
 
         reset(redisLogService);
-        when(redisLogService.getLatestErrors()).thenReturn(Collections.emptyList());
+        when(redisLogService.getLatestErrors(any())).thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/logs/latest-errors"))
                 .andExpect(status().isOk())
@@ -173,7 +173,7 @@ public class LogServiceIntegrationTest {
         LogDto infoLog = new LogDto();
         infoLog.setService("payment-service");
         infoLog.setLevel("INFO");
-        when(redisLogService.getLatestErrors()).thenReturn(List.of(infoLog));
+        when(redisLogService.getLatestErrors(any())).thenReturn(List.of(infoLog));
 
         mockMvc.perform(get("/api/logs/latest-errors"))
                 .andExpect(status().isOk())

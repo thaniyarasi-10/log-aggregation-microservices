@@ -101,7 +101,10 @@ public class AlertNotificationService {
         // 1. Perform signature lookup restricted by service within the last 24 hours
         LOGGER.info("Alert aggregation started for service: {}", serviceName);
         LocalDateTime limit = LocalDateTime.now().minusHours(24);
-        List<Alert> recentAlerts = alertRepository.findAllByServiceIgnoreCaseAndTimestampAfter(serviceName, limit);
+        UUID orgId = UUID.fromString(request.organizationId() != null && !request.organizationId().isBlank()
+                ? request.organizationId().trim()
+                : "00000000-0000-0000-0000-000000000000");
+        List<Alert> recentAlerts = alertRepository.findByOrganizationIdAndServiceIgnoreCaseAndTimestampAfter(orgId, serviceName, limit);
         String incomingSignature = ErrorFingerprinter.getSignature(rawMessage);
 
         Alert alert = recentAlerts.stream()
@@ -115,6 +118,7 @@ public class AlertNotificationService {
         if (isNew) {
             alert = new Alert();
             alert.setId(UUID.randomUUID());
+            alert.setOrganizationId(orgId);
             alert.setService(serviceName);
             alert.setMessage(rawMessage);
             alert.setCount(incomingCount);

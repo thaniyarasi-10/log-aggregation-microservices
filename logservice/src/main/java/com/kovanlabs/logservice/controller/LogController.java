@@ -81,7 +81,8 @@ public class LogController {
             @RequestParam(value = "size", defaultValue = "20") int size,
             @RequestHeader(value = "X-User-Email", required = false) String userEmail,
             @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Services", required = false) String userServices) {
+            @RequestHeader(value = "X-User-Services", required = false) String userServices,
+            @RequestHeader(value = "X-Organization-Id", required = false) String organizationId) {
 
         String finalServices = (services != null && !services.isBlank()) ? services : service;
         String finalLevels = (levels != null && !levels.isBlank()) ? levels : level;
@@ -113,7 +114,9 @@ public class LogController {
         AuthenticatedUserContext context = new AuthenticatedUserContext(
                 userEmail != null ? userEmail : "unknown@local",
                 "ADMIN".equalsIgnoreCase(userRole) ? UserRole.ADMIN : UserRole.DEV,
-                allowedServices
+                allowedServices,
+                List.of(),
+                organizationId
         );
 
         List<LogEvent> results = elasticRepository.searchMulti(
@@ -145,7 +148,8 @@ public class LogController {
             @RequestParam(value = "timePreset", required = false) String timePreset,
             @RequestHeader(value = "X-User-Email", required = false) String userEmail,
             @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Services", required = false) String userServices) {
+            @RequestHeader(value = "X-User-Services", required = false) String userServices,
+            @RequestHeader(value = "X-Organization-Id", required = false) String organizationId) {
 
         String finalServices = (services != null && !services.isBlank()) ? services : service;
         String finalLevels = (levels != null && !levels.isBlank()) ? levels : level;
@@ -161,7 +165,9 @@ public class LogController {
         AuthenticatedUserContext context = new AuthenticatedUserContext(
                 userEmail != null ? userEmail : "unknown@local",
                 "ADMIN".equalsIgnoreCase(userRole) ? UserRole.ADMIN : UserRole.DEV,
-                allowedServices
+                allowedServices,
+                List.of(),
+                organizationId
         );
 
         Map<String, Object> metrics = elasticRepository.getMetrics(
@@ -182,7 +188,8 @@ public class LogController {
     public ResponseEntity<List<String>> services(
             @RequestHeader(value = "X-User-Email", required = false) String userEmail,
             @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Services", required = false) String userServices) {
+            @RequestHeader(value = "X-User-Services", required = false) String userServices,
+            @RequestHeader(value = "X-Organization-Id", required = false) String organizationId) {
 
         List<String> allowedServices = new ArrayList<>();
         if (userServices != null && !userServices.isBlank()) {
@@ -195,7 +202,9 @@ public class LogController {
         AuthenticatedUserContext context = new AuthenticatedUserContext(
                 userEmail != null ? userEmail : "unknown@local",
                 "ADMIN".equalsIgnoreCase(userRole) ? UserRole.ADMIN : UserRole.DEV,
-                allowedServices
+                allowedServices,
+                List.of(),
+                organizationId
         );
 
         List<String> services = elasticRepository.getDistinctServices(null, null, 100, context);
@@ -203,10 +212,14 @@ public class LogController {
     }
 
     @GetMapping("/latest-errors")
-    public ResponseEntity<List<LogDto>> getLatestErrors() {
+    public ResponseEntity<List<LogDto>> getLatestErrors(
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail,
+            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestHeader(value = "X-User-Services", required = false) String userServices,
+            @RequestHeader(value = "X-Organization-Id", required = false) String organizationId) {
         List<LogDto> cachedErrors = null;
         try {
-            cachedErrors = redisLogService.getLatestErrors();
+            cachedErrors = redisLogService.getLatestErrors(organizationId);
         } catch (Exception e) {
             LOGGER.warn("Redis is unavailable or failed to retrieve latest errors: {}. Falling back to Elasticsearch.", e.getMessage());
         }
@@ -222,10 +235,20 @@ public class LogController {
             LOGGER.info("Redis latest errors cache is empty or expired. Falling back to Elasticsearch.");
         }
 
+        List<String> allowedServices = new ArrayList<>();
+        if (userServices != null && !userServices.isBlank()) {
+            allowedServices = Arrays.stream(userServices.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .toList();
+        }
+
         AuthenticatedUserContext context = new AuthenticatedUserContext(
-                "admin@local",
-                UserRole.ADMIN,
-                List.of()
+                userEmail != null ? userEmail : "unknown@local",
+                "ADMIN".equalsIgnoreCase(userRole) ? UserRole.ADMIN : UserRole.DEV,
+                allowedServices,
+                List.of(),
+                organizationId
         );
         List<LogEvent> errors = elasticRepository.searchMulti(
                 null,
@@ -249,7 +272,8 @@ public class LogController {
     public ResponseEntity<Map<String, List<AlertItemView>>> getAlerts(
             @RequestHeader(value = "X-User-Email", required = false) String userEmail,
             @RequestHeader(value = "X-User-Role", required = false) String userRole,
-            @RequestHeader(value = "X-User-Services", required = false) String userServices) {
+            @RequestHeader(value = "X-User-Services", required = false) String userServices,
+            @RequestHeader(value = "X-Organization-Id", required = false) String organizationId) {
 
         List<String> allowedServices = new ArrayList<>();
         if (userServices != null && !userServices.isBlank()) {
@@ -262,7 +286,9 @@ public class LogController {
         AuthenticatedUserContext context = new AuthenticatedUserContext(
                 userEmail != null ? userEmail : "unknown@local",
                 "ADMIN".equalsIgnoreCase(userRole) ? UserRole.ADMIN : UserRole.DEV,
-                allowedServices
+                allowedServices,
+                List.of(),
+                organizationId
         );
 
         Map<String, List<AlertItemView>> alerts = elasticRepository.calculateAlerts(context);
@@ -271,9 +297,10 @@ public class LogController {
 
     @GetMapping("/service-health")
     public ResponseEntity<List<ServiceLogMetrics>> getServiceHealth(
-            @RequestParam(value = "windowMinutes", defaultValue = "15") int windowMinutes) {
+            @RequestParam(value = "windowMinutes", defaultValue = "15") int windowMinutes,
+            @RequestHeader(value = "X-Organization-Id", required = false) String organizationId) {
         LOGGER.info("REST request to get service health metrics for last {} minutes", windowMinutes);
-        List<ServiceLogMetrics> metrics = elasticRepository.getServiceHealthMetrics(windowMinutes);
+        List<ServiceLogMetrics> metrics = elasticRepository.getServiceHealthMetrics(windowMinutes, organizationId);
         return ResponseEntity.ok(metrics);
     }
 

@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
@@ -24,9 +25,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kovanlabs.notificationservice.dto.JiraConfigurationRequest;
@@ -34,6 +37,7 @@ import com.kovanlabs.notificationservice.dto.JiraUserDto;
 import com.kovanlabs.notificationservice.model.JiraConfiguration;
 import com.kovanlabs.notificationservice.repository.JiraConfigurationRepository;
 import com.kovanlabs.notificationservice.service.JiraClient;
+import com.kovanlabs.notificationservice.security.TenantSecurityService;
 
 @ExtendWith(MockitoExtension.class)
 class JiraConfigurationControllerTest {
@@ -44,6 +48,9 @@ class JiraConfigurationControllerTest {
     @Mock
     private JiraClient jiraClient;
 
+    @Mock
+    private TenantSecurityService tenantSecurityService;
+
     @InjectMocks
     private JiraConfigurationController controller;
 
@@ -51,13 +58,16 @@ class JiraConfigurationControllerTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private UUID configId;
     private JiraConfiguration config;
+    private UUID orgId;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
         configId = UUID.randomUUID();
+        orgId = UUID.randomUUID();
         config = new JiraConfiguration();
         config.setId(configId);
+        config.setOrganizationId(orgId);
         config.setJiraBaseUrl("https://company.atlassian.net");
         config.setJiraEmail("arun@company.com");
         config.setJiraApiToken("fake-token-1234");
@@ -65,13 +75,20 @@ class JiraConfigurationControllerTest {
         config.setActive(true);
         config.setCreatedAt(LocalDateTime.now());
         config.setUpdatedAt(LocalDateTime.now());
+
+        org.mockito.Mockito.lenient().when(tenantSecurityService.validateMembership(any(), any()))
+                .thenReturn(orgId);
+        org.mockito.Mockito.lenient().when(tenantSecurityService.validateMembershipAndRole(any(), any(), any()))
+                .thenReturn(orgId);
     }
 
     @Test
     void getConfiguration_found_returnsOk() throws Exception {
-        when(repository.findFirstByActiveTrue()).thenReturn(Optional.of(config));
+        when(repository.findFirstByOrganizationIdAndActiveTrue(orgId)).thenReturn(Optional.of(config));
 
-        mockMvc.perform(get("/api/jira/configuration"))
+        mockMvc.perform(get("/api/jira/configuration")
+                        .header("X-User-Id", "user-123")
+                        .header("X-Organization-Id", orgId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.jiraBaseUrl", is("https://company.atlassian.net")))
                 .andExpect(jsonPath("$.jiraEmail", is("arun@company.com")))
@@ -81,10 +98,12 @@ class JiraConfigurationControllerTest {
 
     @Test
     void getConfiguration_empty_returnsNoContent() throws Exception {
-        when(repository.findFirstByActiveTrue()).thenReturn(Optional.empty());
-        when(repository.findAll()).thenReturn(Collections.emptyList());
+        when(repository.findFirstByOrganizationIdAndActiveTrue(orgId)).thenReturn(Optional.empty());
+        when(repository.findByOrganizationId(orgId)).thenReturn(Collections.emptyList());
 
-        mockMvc.perform(get("/api/jira/configuration"))
+        mockMvc.perform(get("/api/jira/configuration")
+                        .header("X-User-Id", "user-123")
+                        .header("X-Organization-Id", orgId.toString()))
                 .andExpect(status().isNoContent());
     }
 
@@ -97,6 +116,8 @@ class JiraConfigurationControllerTest {
         when(repository.save(any(JiraConfiguration.class))).thenReturn(config);
 
         mockMvc.perform(post("/api/jira/configuration")
+                        .header("X-User-Id", "user-123")
+                        .header("X-Organization-Id", orgId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isCreated())
@@ -110,10 +131,12 @@ class JiraConfigurationControllerTest {
                 "https://new-company.atlassian.net", null, null, null, null
         );
 
-        when(repository.findFirstByActiveTrue()).thenReturn(Optional.of(config));
+        when(repository.findFirstByOrganizationIdAndActiveTrue(orgId)).thenReturn(Optional.of(config));
         when(repository.save(any(JiraConfiguration.class))).thenReturn(config);
 
         mockMvc.perform(put("/api/jira/configuration")
+                        .header("X-User-Id", "user-123")
+                        .header("X-Organization-Id", orgId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isOk());
@@ -128,6 +151,8 @@ class JiraConfigurationControllerTest {
         doNothing().when(jiraClient).testConnection(anyString(), anyString(), anyString(), anyString());
 
         mockMvc.perform(post("/api/jira/test-connection")
+                        .header("X-User-Id", "user-123")
+                        .header("X-Organization-Id", orgId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
@@ -144,6 +169,8 @@ class JiraConfigurationControllerTest {
                 .when(jiraClient).testConnection(anyString(), anyString(), anyString(), anyString());
 
         mockMvc.perform(post("/api/jira/test-connection")
+                        .header("X-User-Id", "user-123")
+                        .header("X-Organization-Id", orgId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isBadRequest())
@@ -152,11 +179,14 @@ class JiraConfigurationControllerTest {
 
     @Test
     void getJiraUsers_success_returnsList() throws Exception {
-        when(repository.findFirstByActiveTrue()).thenReturn(Optional.of(config));
+        when(repository.findFirstByOrganizationIdAndActiveTrue(orgId)).thenReturn(Optional.of(config));
         when(jiraClient.searchAssignableUsers(anyString(), anyString(), anyString(), anyString(), any()))
                 .thenReturn(Collections.singletonList(new JiraUserDto("acc123", "Arun Kumar")));
 
-        mockMvc.perform(get("/api/jira/users").param("query", "Arun"))
+        mockMvc.perform(get("/api/jira/users")
+                        .header("X-User-Id", "user-123")
+                        .header("X-Organization-Id", orgId.toString())
+                        .param("query", "Arun"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].accountId", is("acc123")))
@@ -169,8 +199,12 @@ class JiraConfigurationControllerTest {
                 "https://company.atlassian.net", "arun@company.com", "fake-token-1234", "PAY", true
         );
 
+        when(tenantSecurityService.validateMembershipAndRole(any(), any(), eq("ADMIN")))
+                .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Required role ADMIN not found"));
+
         mockMvc.perform(post("/api/jira/configuration")
-                        .header("X-User-Role", "DEV")
+                        .header("X-User-Id", "user-123")
+                        .header("X-Organization-Id", orgId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isForbidden());
@@ -182,8 +216,12 @@ class JiraConfigurationControllerTest {
                 "https://new-company.atlassian.net", null, null, null, null
         );
 
+        when(tenantSecurityService.validateMembershipAndRole(any(), any(), eq("ADMIN")))
+                .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Required role ADMIN not found"));
+
         mockMvc.perform(put("/api/jira/configuration")
-                        .header("X-User-Role", "DEV")
+                        .header("X-User-Id", "user-123")
+                        .header("X-Organization-Id", orgId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isForbidden());
@@ -195,8 +233,12 @@ class JiraConfigurationControllerTest {
                 "https://company.atlassian.net", "arun@company.com", "fake-token-1234", "PAY", true
         );
 
+        when(tenantSecurityService.validateMembershipAndRole(any(), any(), eq("ADMIN")))
+                .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Required role ADMIN not found"));
+
         mockMvc.perform(post("/api/jira/test-connection")
-                        .header("X-User-Role", "DEV")
+                        .header("X-User-Id", "user-123")
+                        .header("X-Organization-Id", orgId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isForbidden());

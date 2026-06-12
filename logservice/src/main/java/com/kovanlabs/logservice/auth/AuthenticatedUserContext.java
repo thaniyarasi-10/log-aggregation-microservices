@@ -8,7 +8,8 @@ public record AuthenticatedUserContext(
         String email,
         UserRole role,
         List<String> allowedServices,
-        List<String> permissions) {
+        List<String> permissions,
+        String organizationId) {
 
     public AuthenticatedUserContext {
         email = email == null ? "unknown@local" : email;
@@ -18,7 +19,7 @@ public record AuthenticatedUserContext(
     }
 
     public AuthenticatedUserContext(String email, UserRole role, List<String> allowedServices) {
-        this(email, role, allowedServices, List.of());
+        this(email, role, allowedServices, List.of(), null);
     }
 
     public boolean isAdmin() {

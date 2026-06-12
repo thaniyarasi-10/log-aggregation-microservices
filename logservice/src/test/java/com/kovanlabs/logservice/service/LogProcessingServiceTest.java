@@ -75,6 +75,6 @@ class LogProcessingServiceTest {
 
         service.processLogEvent(event);
 
-        verify(notificationServiceClient).sendAlert("payment-service", "Database connection failed", "ERROR");
+        verify(notificationServiceClient).sendAlert("payment-service", "Database connection failed", "ERROR", null);
     }
 }

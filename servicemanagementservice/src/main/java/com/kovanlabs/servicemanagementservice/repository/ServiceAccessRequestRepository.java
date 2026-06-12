@@ -9,6 +9,20 @@ import com.kovanlabs.servicemanagementservice.model.ServiceAccessRequest;
 
 public interface ServiceAccessRequestRepository extends JpaRepository<ServiceAccessRequest, UUID> {
 
+    List<ServiceAccessRequest> findByOrganizationIdAndRequestedByOrderByCreatedAtDesc(UUID organizationId, String requestedBy);
+
+    List<ServiceAccessRequest> findByOrganizationIdOrderByCreatedAtDesc(UUID organizationId);
+
+    List<ServiceAccessRequest> findByOrganizationIdAndRequestedByAndServiceNameIgnoreCaseAndStatus(
+            UUID organizationId,
+            String requestedBy,
+            String serviceName,
+            ServiceAccessRequest.RequestStatus status);
+
+    boolean existsByOrganizationIdAndServiceNameIgnoreCase(UUID organizationId, String serviceName);
+
+    boolean existsByOrganizationIdAndServiceNameIgnoreCaseAndStatus(UUID organizationId, String serviceName, ServiceAccessRequest.RequestStatus status);
+
     List<ServiceAccessRequest> findByRequestedByOrderByCreatedAtDesc(String requestedBy);
 
     List<ServiceAccessRequest> findAllByOrderByCreatedAtDesc();
@@ -17,4 +31,8 @@ public interface ServiceAccessRequestRepository extends JpaRepository<ServiceAcc
             String requestedBy,
             String serviceName,
             ServiceAccessRequest.RequestStatus status);
+
+    boolean existsByServiceNameIgnoreCase(String serviceName);
+
+    boolean existsByServiceNameIgnoreCaseAndStatus(String serviceName, ServiceAccessRequest.RequestStatus status);
 }

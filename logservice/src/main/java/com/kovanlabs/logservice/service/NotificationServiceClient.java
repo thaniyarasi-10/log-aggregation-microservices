@@ -19,6 +19,10 @@ public class NotificationServiceClient {
     }
 
     public void sendAlert(String service, String message, String level) {
+        sendAlert(service, message, level, null);
+    }
+
+    public void sendAlert(String service, String message, String level, String organizationId) {
         if (service == null || service.isBlank() || message == null || message.isBlank()) {
             return;
         }
@@ -31,7 +35,8 @@ public class NotificationServiceClient {
                     service,
                     level != null ? level : "ERROR",
                     message,
-                    1
+                    1,
+                    organizationId
             );
             restClient.post()
                     .uri("/api/notifications/alerts")

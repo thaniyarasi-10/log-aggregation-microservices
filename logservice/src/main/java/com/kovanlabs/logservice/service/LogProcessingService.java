@@ -83,7 +83,7 @@ public class LogProcessingService {
             String level = logEvent.getLevel();
             if (level != null && ("ERROR".equalsIgnoreCase(level.trim()) || "CRITICAL".equalsIgnoreCase(level.trim()) || "FATAL".equalsIgnoreCase(level.trim()))) {
                 redisLogService.saveLatestError(new LogDto(logEvent));
-                notificationServiceClient.sendAlert(logEvent.getService(), logEvent.getMessage(), level);
+                notificationServiceClient.sendAlert(logEvent.getService(), logEvent.getMessage(), level, logEvent.getOrganizationId());
             }
             
             if (esSaved) {

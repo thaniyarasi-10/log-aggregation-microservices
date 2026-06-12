@@ -1,0 +1,46 @@
+{
+  "groups": [
+    {
+      "name": "lynklog",
+      "type": "com.kovanlabs.lynklog.config.LynkLogProperties",
+      "sourceType": "com.kovanlabs.lynklog.config.LynkLogProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "lynklog.api-key",
+      "type": "java.lang.String",
+      "sourceType": "com.kovanlabs.lynklog.config.LynkLogProperties"
+    },
+    {
+      "name": "lynklog.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "com.kovanlabs.lynklog.config.LynkLogProperties",
+      "defaultValue": true
+    },
+    {
+      "name": "lynklog.kafka-bootstrap-servers",
+      "type": "java.lang.String",
+      "sourceType": "com.kovanlabs.lynklog.config.LynkLogProperties",
+      "defaultValue": "localhost:9092"
+    },
+    {
+      "name": "lynklog.kafka-topic",
+      "type": "java.lang.String",
+      "sourceType": "com.kovanlabs.lynklog.config.LynkLogProperties",
+      "defaultValue": "lynk-logs"
+    },
+    {
+      "name": "lynklog.log-file-path",
+      "type": "java.lang.String",
+      "sourceType": "com.kovanlabs.lynklog.config.LynkLogProperties",
+      "defaultValue": "logs\/application.log"
+    },
+    {
+      "name": "lynklog.service-secret",
+      "type": "java.lang.String",
+      "sourceType": "com.kovanlabs.lynklog.config.LynkLogProperties"
+    }
+  ],
+  "hints": []
+}

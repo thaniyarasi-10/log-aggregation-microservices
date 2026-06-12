@@ -9,6 +9,8 @@ import java.time.LocalDateTime;
 
 @Repository
 public interface AlertRepository extends JpaRepository<Alert, UUID> {
+    List<Alert> findByOrganizationId(UUID organizationId);
+    List<Alert> findByOrganizationIdAndServiceIgnoreCaseAndTimestampAfter(UUID organizationId, String service, LocalDateTime timestamp);
     List<Alert> findAllByServiceIgnoreCaseAndTimestampAfter(String service, LocalDateTime timestamp);
 }
 

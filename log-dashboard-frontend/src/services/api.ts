@@ -521,6 +521,16 @@ export const apiService = {
     });
   },
 
+  async getServiceSecret(serviceId: string): Promise<{ serviceSecret: string | null; hidden: boolean; secondsRemaining: number | null }> {
+    const response = await api.get<{ serviceSecret: string | null; hidden: boolean; secondsRemaining: number | null }>(`/services/${serviceId}/secret`);
+    return response.data;
+  },
+
+  async regenerateServiceSecret(serviceId: string): Promise<{ serviceId: string; serviceName: string; serviceSecret: string }> {
+    const response = await api.post<{ serviceId: string; serviceName: string; serviceSecret: string }>(`/services/${serviceId}/regenerate-secret`);
+    return response.data;
+  },
+
   async fetchSourceCode(
     service: string,
     className?: string,

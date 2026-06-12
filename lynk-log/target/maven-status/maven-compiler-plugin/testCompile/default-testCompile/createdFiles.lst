@@ -1,0 +1,5 @@
+com\kovanlabs\lynklog\producer\LynkKafkaProducerTest.class
+com\kovanlabs\lynklog\startup\LynkLogStartupVerifierTest.class
+com\kovanlabs\lynklog\watcher\LynkLogFileWatcherTest.class
+com\kovanlabs\lynklog\worker\KafkaPublisherWorkerTest.class
+com\kovanlabs\lynklog\parser\LogParserTest.class

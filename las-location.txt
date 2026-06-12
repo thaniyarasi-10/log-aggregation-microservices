@@ -1,0 +1,33 @@
+Elasticsearch:
+D:\elasticsearch\bin
+
+Kafka:
+D:\kafka
+
+ServiceManagement Service:
+Path: D:\log-aggregation-microservices\servicemanagementservice
+Port: 8082
+
+Log Service:
+Path: D:\log-aggregation-microservices\logservice
+Port: 8081
+
+Notification Service:
+Path: D:\log-aggregation-microservices\notificationservice
+Port: 8083
+
+Gateway Service:
+Path: D:\log-aggregation-microservices\gateway-service
+Port: 8080
+
+Kafka Consumer:
+Path: D:\kafka (.\bin\windows\kafka-console-consumer.bat --topic app-logs --bootstrap-server localhost:9092)
+
+Frontend:
+Path: D:\log-aggregation-microservices\log-dashboard-frontend
+Port: 3000
+
+AI Agent:
+Path: D:\log-aggregation-microservices\agent
+Port: 8000
+Start Command: uvicorn main:app --port 8000 --reload

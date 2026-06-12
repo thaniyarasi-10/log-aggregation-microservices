@@ -60,6 +60,13 @@ export default function ServicesPage() {
   const [drawerAlerts, setDrawerAlerts] = useState<AlertItem[]>([]);
   const [drawerAlertsLoading, setDrawerAlertsLoading] = useState<boolean>(false);
 
+  // Service secret states
+  const [serviceSecret, setServiceSecret] = useState<string | null>(null);
+  const [loadingSecret, setLoadingSecret] = useState<boolean>(false);
+  const [revealSecret, setRevealSecret] = useState<boolean>(false);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState<boolean>(false);
+  const [copiedSecret, setCopiedSecret] = useState<boolean>(false);
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [createForm, setCreateForm] = useState<ServiceForm>(emptyServiceForm);
@@ -207,14 +214,23 @@ export default function ServicesPage() {
     void fetchMetricsForAll();
   }, [services]);
 
+
+
   // Handle drawer data loading
   useEffect(() => {
     if (!selectedService) {
       setDrawerMetrics(null);
       setDrawerLogs([]);
       setDrawerAlerts([]);
+      setServiceSecret(null);
+      setRevealSecret(false);
+      setCopiedSecret(false);
       return;
     }
+
+    setServiceSecret(null);
+    setRevealSecret(false);
+    setCopiedSecret(false);
 
     const loadDrawerData = async () => {
       const serviceName = selectedService.name;
@@ -265,6 +281,20 @@ export default function ServicesPage() {
         console.error('Failed to load drawer alerts', err);
       } finally {
         setDrawerAlertsLoading(false);
+      }
+
+      // Load Secret
+      if (selectedService.id) {
+        try {
+          setLoadingSecret(true);
+          const data = await apiService.getServiceSecret(selectedService.id);
+          setServiceSecret(data.serviceSecret);
+        } catch (err) {
+          console.warn('Could not load service secret (unauthorized or error)', err);
+          setServiceSecret(null);
+        } finally {
+          setLoadingSecret(false);
+        }
       }
     };
 
@@ -389,6 +419,33 @@ export default function ServicesPage() {
       await loadServices();
     } catch (err) {
       setActionError(extractApiErrorMessage(err, 'Failed to update primary owner'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const copyToClipboard = async () => {
+    if (!serviceSecret) return;
+    try {
+      await navigator.clipboard.writeText(serviceSecret);
+      setCopiedSecret(true);
+      setTimeout(() => setCopiedSecret(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy secret', err);
+    }
+  };
+
+  const handleRegenerateSecret = async () => {
+    if (!selectedService?.id) return;
+    try {
+      setSubmitting(true);
+      const data = await apiService.regenerateServiceSecret(selectedService.id);
+      setServiceSecret(data.serviceSecret);
+      setRevealSecret(false);
+      setShowRegenerateConfirm(false);
+      setActionError('');
+    } catch (err) {
+      setActionError(extractApiErrorMessage(err, 'Failed to regenerate secret'));
     } finally {
       setSubmitting(false);
     }
@@ -843,6 +900,58 @@ export default function ServicesPage() {
                 </div>
               </div>
 
+              {/* Security & Credentials */}
+              <div className="obs-drawer-section">
+                <span className="obs-drawer-section-title">Security & Credentials</span>
+                {loadingSecret ? (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="upload-spinner" style={{ width: '12px', height: '12px' }} />
+                    Loading security credentials...
+                  </div>
+                ) : serviceSecret ? (
+                  <div className="obs-drawer-item">
+                    <span className="obs-drawer-label">Service Secret Key</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface-raised)', border: '1px solid var(--border)', borderRadius: '4px', padding: '6px 10px' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {revealSecret ? serviceSecret : '••••••••••••••••••••••••••••••••'}
+                        </span>
+                        <button
+                          className="btn"
+                          type="button"
+                          style={{ padding: '2px 8px', fontSize: '0.72rem', height: '24px', whiteSpace: 'nowrap' }}
+                          onClick={() => setRevealSecret(!revealSecret)}
+                        >
+                          {revealSecret ? 'Hide' : 'Reveal'}
+                        </button>
+                        <button
+                          className="btn"
+                          type="button"
+                          style={{ padding: '2px 8px', fontSize: '0.72rem', height: '24px', whiteSpace: 'nowrap' }}
+                          onClick={() => void copyToClipboard()}
+                        >
+                          {copiedSecret ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <button
+                          className="btn btn-danger"
+                          type="button"
+                          style={{ padding: '4px 10px', fontSize: '0.72rem', height: '26px' }}
+                          onClick={() => setShowRegenerateConfirm(true)}
+                        >
+                          Regenerate Secret
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                    No security credentials available for this service.
+                  </div>
+                )}
+              </div>
+
               {/* Telemetry Metrics */}
               <div className="obs-drawer-section">
                 <span className="obs-drawer-section-title">Health Metrics (24h)</span>
@@ -1019,6 +1128,32 @@ export default function ServicesPage() {
               onClick={() => void saveEdit()}
             >
               {submitting ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* REGENERATE SECRET CONFIRMATION MODAL */}
+      <Modal
+        open={showRegenerateConfirm}
+        title="Regenerate Service Secret"
+        onClose={() => setShowRegenerateConfirm(false)}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '4px 0' }}>
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+            Regenerating the secret will invalidate all existing applications using the old secret. Applications must be updated with the new secret.
+          </p>
+          {actionError && <p className="error">{actionError}</p>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', marginTop: '4px' }}>
+            <button className="btn" type="button" onClick={() => setShowRegenerateConfirm(false)} disabled={submitting}>
+              Cancel
+            </button>
+            <button
+              className="btn btn-danger"
+              disabled={submitting}
+              onClick={() => void handleRegenerateSecret()}
+            >
+              {submitting ? 'Regenerating...' : 'Regenerate Secret'}
             </button>
           </div>
         </div>

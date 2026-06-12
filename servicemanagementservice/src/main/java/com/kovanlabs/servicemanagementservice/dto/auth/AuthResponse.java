@@ -11,5 +11,6 @@ public record AuthResponse(
         List<String> roles,
         List<String> permissions,
         List<String> services,
-        String profileImageUrl) {
+        String profileImageUrl,
+        String activeOrganizationId) {
 }

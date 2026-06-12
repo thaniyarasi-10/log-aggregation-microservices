@@ -39,6 +39,9 @@ public class JiraConfiguration {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId;
+
     // Getters and Setters
     public UUID getId() {
         return id;
@@ -102,5 +105,13 @@ public class JiraConfiguration {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public UUID getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(UUID organizationId) {
+        this.organizationId = organizationId;
     }
 }

@@ -33,6 +33,9 @@ public class Alert {
     @Column(name = "timestamp", nullable = false)
     private LocalDateTime timestamp;
 
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId;
+
     public UUID getId() {
         return id;
     }
@@ -79,5 +82,13 @@ public class Alert {
 
     public void setTimestamp(LocalDateTime timestamp) {
         this.timestamp = timestamp;
+    }
+
+    public UUID getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(UUID organizationId) {
+        this.organizationId = organizationId;
     }
 }

@@ -31,6 +31,7 @@ public class LogEvent {
     private Object tags;
     private String project;
     private LogCaller caller;
+    private String organizationId;
 
 
     @Indexed(expireAfterSeconds = 1296000) // 15 days
@@ -114,5 +115,13 @@ public class LogEvent {
     public void setCallerLineNumber(Integer lineNumber) {
         if (this.caller == null) this.caller = new LogCaller();
         this.caller.setLineNumber(lineNumber);
+    }
+
+    public String getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(String organizationId) {
+        this.organizationId = organizationId;
     }
 }

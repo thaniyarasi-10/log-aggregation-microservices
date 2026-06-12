@@ -11,5 +11,9 @@ public interface UserRoleMappingRepository extends JpaRepository<UserRoleMapping
 
 	List<UserRoleMapping> findByUser_Id(String userId);
 
+	List<UserRoleMapping> findByUser_IdAndOrganization_Id(String userId, UUID organizationId);
+
+	boolean existsByUser_IdAndOrganization_IdAndRole_Id(String userId, UUID organizationId, UUID roleId);
+
 	boolean existsByUser_IdAndRole_Id(String userId, UUID roleId);
 }

@@ -29,6 +29,10 @@ public class UserRoleMapping {
     @JoinColumn(name = "role_id", nullable = false)
     private AppRole role;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "organization_id", nullable = false)
+    private Organization organization;
+
     @Column(name = "assigned_at", nullable = false)
     private LocalDateTime assignedAt;
 
@@ -73,5 +77,13 @@ public class UserRoleMapping {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Organization getOrganization() {
+        return organization;
+    }
+
+    public void setOrganization(Organization organization) {
+        this.organization = organization;
     }
 }

@@ -3,6 +3,8 @@ package com.kovanlabs.notificationservice.controller;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -22,20 +24,26 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kovanlabs.notificationservice.dto.UserJiraMappingRequest;
 import com.kovanlabs.notificationservice.model.UserJiraMapping;
 import com.kovanlabs.notificationservice.repository.UserJiraMappingRepository;
+import com.kovanlabs.notificationservice.security.TenantSecurityService;
 
 @ExtendWith(MockitoExtension.class)
 class UserJiraMappingControllerTest {
 
     @Mock
     private UserJiraMappingRepository repository;
+
+    @Mock
+    private TenantSecurityService tenantSecurityService;
 
     @InjectMocks
     private UserJiraMappingController controller;
@@ -44,11 +52,13 @@ class UserJiraMappingControllerTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private UUID mappingId;
     private UserJiraMapping mapping;
+    private UUID orgId;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
         mappingId = UUID.randomUUID();
+        orgId = UUID.randomUUID();
         mapping = new UserJiraMapping();
         mapping.setId(mappingId);
         mapping.setUserId("Arun");
@@ -57,6 +67,11 @@ class UserJiraMappingControllerTest {
         mapping.setActive(true);
         mapping.setCreatedAt(LocalDateTime.now());
         mapping.setUpdatedAt(LocalDateTime.now());
+
+        org.mockito.Mockito.lenient().when(tenantSecurityService.validateMembership(any(), any()))
+                .thenReturn(orgId);
+        org.mockito.Mockito.lenient().when(tenantSecurityService.validateMembershipAndRole(any(), any(), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied"));
     }
 
     @Test
@@ -64,7 +79,9 @@ class UserJiraMappingControllerTest {
         Object[] row = new Object[] { "Arun", "Arun", "payment-service", mappingId, "abc123", "Arun Kumar", true };
         when(repository.findAllUserMappingsWithServices()).thenReturn(Collections.singletonList(row));
 
-        mockMvc.perform(get("/api/jira/user-mappings"))
+        mockMvc.perform(get("/api/jira/user-mappings")
+                        .header("X-User-Id", "Arun")
+                        .header("X-Organization-Id", orgId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].userId", is("Arun")))
@@ -81,6 +98,7 @@ class UserJiraMappingControllerTest {
         // When requesting as Arun (dev), it matches and returns
         mockMvc.perform(get("/api/jira/user-mappings")
                         .header("X-User-Id", "Arun")
+                        .header("X-Organization-Id", orgId.toString())
                         .header("X-User-Role", "DEV"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -91,6 +109,7 @@ class UserJiraMappingControllerTest {
         when(repository.findByUserId("Bob")).thenReturn(Optional.empty());
         mockMvc.perform(get("/api/jira/user-mappings")
                         .header("X-User-Id", "Bob")
+                        .header("X-Organization-Id", orgId.toString())
                         .header("X-User-Role", "DEV"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -108,6 +127,8 @@ class UserJiraMappingControllerTest {
         when(repository.save(any(UserJiraMapping.class))).thenReturn(mapping);
 
         mockMvc.perform(post("/api/jira/user-mappings")
+                        .header("X-User-Id", "Arun")
+                        .header("X-Organization-Id", orgId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isCreated())
@@ -126,6 +147,7 @@ class UserJiraMappingControllerTest {
 
         mockMvc.perform(post("/api/jira/user-mappings")
                         .header("X-User-Id", "Arun")
+                        .header("X-Organization-Id", orgId.toString())
                         .header("X-User-Role", "DEV")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
@@ -140,6 +162,7 @@ class UserJiraMappingControllerTest {
 
         mockMvc.perform(post("/api/jira/user-mappings")
                         .header("X-User-Id", "Arun")
+                        .header("X-Organization-Id", orgId.toString())
                         .header("X-User-Role", "DEV")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
@@ -155,6 +178,8 @@ class UserJiraMappingControllerTest {
         when(repository.findByUserId("Arun")).thenReturn(Optional.of(mapping));
 
         mockMvc.perform(post("/api/jira/user-mappings")
+                        .header("X-User-Id", "Arun")
+                        .header("X-Organization-Id", orgId.toString())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isConflict());
@@ -171,6 +196,7 @@ class UserJiraMappingControllerTest {
 
         mockMvc.perform(put("/api/jira/user-mappings/{id}", mappingId)
                         .header("X-User-Id", "Arun")
+                        .header("X-Organization-Id", orgId.toString())
                         .header("X-User-Role", "DEV")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
@@ -188,6 +214,7 @@ class UserJiraMappingControllerTest {
         // Arun (dev) trying to modify a mapping belonging to Bob, or change mapping owner to Bob
         mockMvc.perform(put("/api/jira/user-mappings/{id}", mappingId)
                         .header("X-User-Id", "Bob") // mapping belongs to Arun, logged in user is Bob
+                        .header("X-Organization-Id", orgId.toString())
                         .header("X-User-Role", "DEV")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
@@ -198,7 +225,9 @@ class UserJiraMappingControllerTest {
     void deleteMapping_exists_returns204() throws Exception {
         when(repository.findById(mappingId)).thenReturn(Optional.of(mapping));
 
-        mockMvc.perform(delete("/api/jira/user-mappings/{id}", mappingId))
+        mockMvc.perform(delete("/api/jira/user-mappings/{id}", mappingId)
+                        .header("X-User-Id", "Arun")
+                        .header("X-Organization-Id", orgId.toString()))
                 .andExpect(status().isNoContent());
     }
 
@@ -208,6 +237,7 @@ class UserJiraMappingControllerTest {
 
         mockMvc.perform(delete("/api/jira/user-mappings/{id}", mappingId)
                         .header("X-User-Id", "Bob")
+                        .header("X-Organization-Id", orgId.toString())
                         .header("X-User-Role", "DEV"))
                 .andExpect(status().isForbidden());
     }

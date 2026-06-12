@@ -24,6 +24,7 @@ public class LogDto {
     private String errorDetails;
     private Object tags;
     private LogCaller caller;
+    private String organizationId;
 
     public LogDto() {}
 
@@ -46,6 +47,7 @@ public class LogDto {
             this.errorDetails = event.getErrorDetails();
             this.tags = event.getTags();
             this.caller = event.getCaller();
+            this.organizationId = event.getOrganizationId();
         }
     }
 
@@ -99,4 +101,7 @@ public class LogDto {
 
     public LogCaller getCaller() { return caller; }
     public void setCaller(LogCaller caller) { this.caller = caller; }
+
+    public String getOrganizationId() { return organizationId; }
+    public void setOrganizationId(String organizationId) { this.organizationId = organizationId; }
 }

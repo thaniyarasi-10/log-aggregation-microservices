@@ -10,7 +10,11 @@ import com.kovanlabs.servicemanagementservice.model.AppService;
 
 public interface AppServiceRepository extends JpaRepository<AppService, UUID> {
 
-    List<AppService> findByActiveTrueOrderByNameAsc();
+    List<AppService> findByOrganizationIdAndActiveTrueOrderByNameAsc(UUID organizationId);
+
+    Optional<AppService> findByOrganizationIdAndNameIgnoreCase(UUID organizationId, String name);
 
     Optional<AppService> findByNameIgnoreCase(String name);
+
+    Optional<AppService> findByServiceSecret(String serviceSecret);
 }

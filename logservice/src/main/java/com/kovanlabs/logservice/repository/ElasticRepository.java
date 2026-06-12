@@ -938,13 +938,26 @@ public class ElasticRepository {
             return Optional.of(noAccessQuery());
         }
 
+        String orgId = accessContext.organizationId();
+        if (orgId == null || orgId.isBlank()) {
+            return Optional.of(noAccessQuery());
+        }
+
+        Query orgFilter = QueryBuilders.term(t -> t
+                .field("organizationId")
+                .value(orgId)
+        );
+
         if (accessContext.isAdmin()) {
-            return Optional.empty(); // ADMIN has access to all services
+            return Optional.of(orgFilter);
         }
 
         List<String> allowedServices = accessContext.allowedServices();
         if (allowedServices == null || allowedServices.isEmpty()) {
-            return Optional.of(noAccessQuery());
+            return Optional.of(BoolQuery.of(b -> b
+                    .filter(orgFilter)
+                    .filter(noAccessQuery())
+            )._toQuery());
         }
 
         boolean hasWildcardAccess = allowedServices.stream()
@@ -953,7 +966,7 @@ public class ElasticRepository {
                 .anyMatch(value -> "*".equals(value));
 
         if (hasWildcardAccess) {
-            return Optional.empty();
+            return Optional.of(orgFilter);
         }
 
         List<FieldValue> fieldValues = allowedServices.stream()
@@ -964,13 +977,21 @@ public class ElasticRepository {
                 .toList();
 
         if (fieldValues.isEmpty()) {
-            return Optional.of(noAccessQuery());
+            return Optional.of(BoolQuery.of(b -> b
+                    .filter(orgFilter)
+                    .filter(noAccessQuery())
+            )._toQuery());
         }
 
-        return Optional.of(QueryBuilders.terms()
+        Query servicesQuery = QueryBuilders.terms()
                 .field(SERVICE_FIELD)
                 .terms(v -> v.value(fieldValues))
-                .build()._toQuery());
+                .build()._toQuery();
+
+        return Optional.of(BoolQuery.of(b -> b
+                .filter(orgFilter)
+                .filter(servicesQuery)
+        )._toQuery());
     }
 
     private Query noAccessQuery() {
@@ -1202,7 +1223,7 @@ public class ElasticRepository {
         }
     }
 
-    public List<com.kovanlabs.logservice.model.ServiceLogMetrics> getServiceHealthMetrics(int windowMinutes) {
+    public List<com.kovanlabs.logservice.model.ServiceLogMetrics> getServiceHealthMetrics(int windowMinutes, String organizationId) {
         try {
             if (!hasAnyLogIndexes()) {
                 LOGGER.info("No app-logs-* indexes exist in Elasticsearch. Returning empty metrics.");
@@ -1217,9 +1238,19 @@ public class ElasticRepository {
                     .gte(JsonData.of(from.toString()))
                     .lte(JsonData.of(now.toString())))._toQuery();
 
+            Query orgFilter = QueryBuilders.term(t -> t
+                    .field("organizationId")
+                    .value(organizationId != null && !organizationId.isBlank() ? organizationId : "__NO_ORG__")
+            );
+
+            Query boolQuery = BoolQuery.of(b -> b
+                    .filter(timeFilter)
+                    .filter(orgFilter)
+            )._toQuery();
+
             SearchRequest request = SearchRequest.of(s -> s
                     .index(INDEX_PATTERN)
-                    .query(timeFilter)
+                    .query(boolQuery)
                     .size(0)
                     .aggregations("services", a -> a
                             .terms(t -> t

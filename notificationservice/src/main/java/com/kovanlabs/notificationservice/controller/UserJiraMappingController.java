@@ -22,21 +22,35 @@ import com.kovanlabs.notificationservice.dto.UserJiraMappingRequest;
 import com.kovanlabs.notificationservice.dto.UserJiraMappingView;
 import com.kovanlabs.notificationservice.model.UserJiraMapping;
 import com.kovanlabs.notificationservice.repository.UserJiraMappingRepository;
+import com.kovanlabs.notificationservice.security.TenantSecurityService;
 
 @RestController
 @RequestMapping("/api/jira/user-mappings")
 public class UserJiraMappingController {
 
     private final UserJiraMappingRepository repository;
+    private final TenantSecurityService tenantSecurityService;
 
-    public UserJiraMappingController(UserJiraMappingRepository repository) {
+    public UserJiraMappingController(
+            UserJiraMappingRepository repository,
+            TenantSecurityService tenantSecurityService) {
         this.repository = repository;
+        this.tenantSecurityService = tenantSecurityService;
     }
 
     @GetMapping
     public List<UserJiraMappingView> getUserMappings(
-            @RequestHeader(value = "X-User-Id", required = false) String loggedInUserId,
-            @RequestHeader(value = "X-User-Role", required = false) String loggedInUserRole) {
+            @RequestHeader(value = "X-User-Id") String loggedInUserId,
+            @RequestHeader(value = "X-Organization-Id") String orgIdStr,
+            @RequestHeader(value = "X-User-Services", required = false) String userServices) {
+        
+        tenantSecurityService.validateMembership(loggedInUserId, orgIdStr);
+
+        boolean isAdmin = false;
+        try {
+            tenantSecurityService.validateMembershipAndRole(loggedInUserId, orgIdStr, "ADMIN");
+            isAdmin = true;
+        } catch (Exception ignored) {}
         
         List<Object[]> results = repository.findAllUserMappingsWithServices();
         List<UserJiraMappingView> views = results.stream().map(row -> {
@@ -59,8 +73,7 @@ public class UserJiraMappingController {
             );
         }).toList();
 
-        // If the user is not ADMIN, filter the list to only return their own mapping!
-        if (loggedInUserRole != null && !"ADMIN".equalsIgnoreCase(loggedInUserRole)) {
+        if (!isAdmin) {
             String finalUserId = loggedInUserId != null ? loggedInUserId.trim() : "";
             List<UserJiraMappingView> filtered = views.stream()
                     .filter(v -> finalUserId.equalsIgnoreCase(v.userId()))
@@ -69,7 +82,6 @@ public class UserJiraMappingController {
                 return filtered;
             }
             
-            // Check if user exists in app_user first to make sure it's a valid user
             Optional<String> usernameOpt = repository.findUsernameByUserId(finalUserId);
             if (usernameOpt.isPresent()) {
                 String username = usernameOpt.get();
@@ -89,9 +101,18 @@ public class UserJiraMappingController {
 
     @PostMapping
     public ResponseEntity<?> createMapping(
-            @RequestHeader(value = "X-User-Id", required = false) String loggedInUserId,
-            @RequestHeader(value = "X-User-Role", required = false) String loggedInUserRole,
+            @RequestHeader(value = "X-User-Id") String loggedInUserId,
+            @RequestHeader(value = "X-Organization-Id") String orgIdStr,
             @RequestBody UserJiraMappingRequest request) {
+        
+        tenantSecurityService.validateMembership(loggedInUserId, orgIdStr);
+
+        boolean isAdmin = false;
+        try {
+            tenantSecurityService.validateMembershipAndRole(loggedInUserId, orgIdStr, "ADMIN");
+            isAdmin = true;
+        } catch (Exception ignored) {}
+
         if (request.userId() == null || request.userId().isBlank()) {
             return ResponseEntity.badRequest().body("userId is required");
         }
@@ -102,9 +123,8 @@ public class UserJiraMappingController {
             return ResponseEntity.badRequest().body("jiraDisplayName is required");
         }
 
-        // Enforce that developers can only map their own user ID
-        if (loggedInUserRole != null && !"ADMIN".equalsIgnoreCase(loggedInUserRole)) {
-            if (loggedInUserId == null || !loggedInUserId.equalsIgnoreCase(request.userId().trim())) {
+        if (!isAdmin) {
+            if (!loggedInUserId.equalsIgnoreCase(request.userId().trim())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Developers can only manage their own mapping");
             }
         }
@@ -130,9 +150,17 @@ public class UserJiraMappingController {
     @PutMapping("/{id}")
     public ResponseEntity<?> updateMapping(
             @PathVariable("id") UUID id,
-            @RequestHeader(value = "X-User-Id", required = false) String loggedInUserId,
-            @RequestHeader(value = "X-User-Role", required = false) String loggedInUserRole,
+            @RequestHeader(value = "X-User-Id") String loggedInUserId,
+            @RequestHeader(value = "X-Organization-Id") String orgIdStr,
             @RequestBody UserJiraMappingRequest request) {
+        
+        tenantSecurityService.validateMembership(loggedInUserId, orgIdStr);
+
+        boolean isAdmin = false;
+        try {
+            tenantSecurityService.validateMembershipAndRole(loggedInUserId, orgIdStr, "ADMIN");
+            isAdmin = true;
+        } catch (Exception ignored) {}
         
         Optional<UserJiraMapping> existingOpt = repository.findById(id);
         if (existingOpt.isEmpty()) {
@@ -140,9 +168,8 @@ public class UserJiraMappingController {
         }
         UserJiraMapping mapping = existingOpt.get();
 
-        // Enforce that developers can only update their own mapping
-        if (loggedInUserRole != null && !"ADMIN".equalsIgnoreCase(loggedInUserRole)) {
-            if (loggedInUserId == null || !loggedInUserId.equalsIgnoreCase(mapping.getUserId())) {
+        if (!isAdmin) {
+            if (!loggedInUserId.equalsIgnoreCase(mapping.getUserId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Developers can only manage their own mapping");
             }
             if (request.userId() != null && !loggedInUserId.equalsIgnoreCase(request.userId().trim())) {
@@ -170,8 +197,16 @@ public class UserJiraMappingController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteMapping(
             @PathVariable("id") UUID id,
-            @RequestHeader(value = "X-User-Id", required = false) String loggedInUserId,
-            @RequestHeader(value = "X-User-Role", required = false) String loggedInUserRole) {
+            @RequestHeader(value = "X-User-Id") String loggedInUserId,
+            @RequestHeader(value = "X-Organization-Id") String orgIdStr) {
+        
+        tenantSecurityService.validateMembership(loggedInUserId, orgIdStr);
+
+        boolean isAdmin = false;
+        try {
+            tenantSecurityService.validateMembershipAndRole(loggedInUserId, orgIdStr, "ADMIN");
+            isAdmin = true;
+        } catch (Exception ignored) {}
         
         Optional<UserJiraMapping> existingOpt = repository.findById(id);
         if (existingOpt.isEmpty()) {
@@ -179,9 +214,8 @@ public class UserJiraMappingController {
         }
         UserJiraMapping mapping = existingOpt.get();
 
-        // Enforce that developers can only delete their own mapping
-        if (loggedInUserRole != null && !"ADMIN".equalsIgnoreCase(loggedInUserRole)) {
-            if (loggedInUserId == null || !loggedInUserId.equalsIgnoreCase(mapping.getUserId())) {
+        if (!isAdmin) {
+            if (!loggedInUserId.equalsIgnoreCase(mapping.getUserId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
             }
         }

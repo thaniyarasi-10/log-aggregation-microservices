@@ -17,6 +17,7 @@
         <module>servicemanagementservice</module>
         <module>notificationservice</module>
         <module>logservice</module>
+        <module>lynk-log</module>
     </modules>
 
     <properties>

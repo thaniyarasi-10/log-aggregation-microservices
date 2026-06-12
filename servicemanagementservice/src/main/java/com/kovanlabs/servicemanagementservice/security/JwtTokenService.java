@@ -35,9 +35,7 @@ public class JwtTokenService {
     public String generateToken(
             String userId,
             String email,
-            Collection<String> roles,
-            Collection<String> permissions,
-            Collection<String> services) {
+            String activeOrganizationId) {
         long now = System.currentTimeMillis();
         Date issuedAt = new Date(now);
         Date expiresAt = new Date(now + expirationSeconds * 1000);
@@ -45,9 +43,7 @@ public class JwtTokenService {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("email", email);
-        claims.put("roles", List.copyOf(roles));
-        claims.put("permissions", List.copyOf(permissions));
-        claims.put("services", List.copyOf(services));
+        claims.put("activeOrganizationId", activeOrganizationId);
 
         return Jwts.builder()
                 .issuer(issuer)

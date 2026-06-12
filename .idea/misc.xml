@@ -9,6 +9,7 @@
         <option value="$PROJECT_DIR$/notificationservice/pom.xml" />
         <option value="$PROJECT_DIR$/gateway-service/pom.xml" />
         <option value="$PROJECT_DIR$/logservice/pom.xml" />
+        <option value="$PROJECT_DIR$/lynk-log/pom.xml" />
       </list>
     </option>
   </component>

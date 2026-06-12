@@ -23,7 +23,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/logout", "/oauth2/**", "/login/**").permitAll()
-                        .requestMatchers("/api/services/*/approved").permitAll()
+                        .requestMatchers("/api/services/*/approved", "/api/services/verify").permitAll()
                         .requestMatchers("/api/rbac/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2Login(oauth2 -> oauth2.successHandler(oAuth2AuthenticationSuccessHandler))

@@ -3,6 +3,7 @@
   <component name="Encoding">
     <file url="file://$PROJECT_DIR$/gateway-service/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/logservice/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/lynk-log/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/notificationservice/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/servicemanagementservice/src/main/java" charset="UTF-8" />
   </component>

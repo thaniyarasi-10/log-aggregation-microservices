@@ -33,22 +33,13 @@ public class JwtHeaderForwardingFilter implements GlobalFilter, Ordered {
                     Jwt jwt = jwtAuth.getToken();
 
                     String userId = jwt.getClaimAsString("userId");
+                    String activeOrgId = jwt.getClaimAsString("activeOrganizationId");
 
                     String emailClaim = jwt.getClaimAsString("email");
                     final String email =
                             (emailClaim != null && !emailClaim.isBlank())
                                     ? emailClaim
                                     : jwt.getSubject();
-
-                    List<String> roles = jwt.getClaimAsStringList("roles");
-                    String role = (roles != null && !roles.isEmpty())
-                            ? roles.get(0)
-                            : "DEV";
-
-                    List<String> services = jwt.getClaimAsStringList("services");
-                    String servicesStr = (services != null && !services.isEmpty())
-                            ? String.join(",", services)
-                            : "";
 
                     ServerHttpRequest request = new ServerHttpRequestDecorator(exchange.getRequest()) {
                         private HttpHeaders cachedHeaders;
@@ -60,13 +51,11 @@ public class JwtHeaderForwardingFilter implements GlobalFilter, Ordered {
                                 headers.putAll(super.getHeaders());
                                 headers.remove("X-User-Id");
                                 headers.remove("X-User-Email");
-                                headers.remove("X-User-Role");
-                                headers.remove("X-User-Services");
+                                headers.remove("X-Organization-Id");
 
                                 headers.add("X-User-Id", userId == null ? "" : userId);
                                 headers.add("X-User-Email", email == null ? "" : email);
-                                headers.add("X-User-Role", role);
-                                headers.add("X-User-Services", servicesStr);
+                                headers.add("X-Organization-Id", activeOrgId == null ? "" : activeOrgId);
                                 cachedHeaders = HttpHeaders.readOnlyHttpHeaders(headers);
                             }
                             return cachedHeaders;

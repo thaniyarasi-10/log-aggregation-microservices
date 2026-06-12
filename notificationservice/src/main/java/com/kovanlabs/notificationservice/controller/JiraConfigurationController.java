@@ -24,6 +24,7 @@ import com.kovanlabs.notificationservice.dto.JiraUserDto;
 import com.kovanlabs.notificationservice.model.JiraConfiguration;
 import com.kovanlabs.notificationservice.repository.JiraConfigurationRepository;
 import com.kovanlabs.notificationservice.service.JiraClient;
+import com.kovanlabs.notificationservice.security.TenantSecurityService;
 
 @RestController
 @RequestMapping("/api/jira")
@@ -33,16 +34,24 @@ public class JiraConfigurationController {
 
     private final JiraConfigurationRepository repository;
     private final JiraClient jiraClient;
+    private final TenantSecurityService tenantSecurityService;
 
-    public JiraConfigurationController(JiraConfigurationRepository repository, JiraClient jiraClient) {
+    public JiraConfigurationController(
+            JiraConfigurationRepository repository,
+            JiraClient jiraClient,
+            TenantSecurityService tenantSecurityService) {
         this.repository = repository;
         this.jiraClient = jiraClient;
+        this.tenantSecurityService = tenantSecurityService;
     }
 
     @GetMapping("/configuration")
-    public ResponseEntity<JiraConfigurationView> getConfiguration() {
-        return repository.findFirstByActiveTrue()
-                .or(() -> repository.findAll().stream().findFirst())
+    public ResponseEntity<JiraConfigurationView> getConfiguration(
+            @RequestHeader(value = "X-User-Id") String userId,
+            @RequestHeader(value = "X-Organization-Id") String orgIdStr) {
+        UUID orgId = tenantSecurityService.validateMembership(userId, orgIdStr);
+        return repository.findFirstByOrganizationIdAndActiveTrue(orgId)
+                .or(() -> repository.findByOrganizationId(orgId).stream().findFirst())
                 .map(this::toView)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.noContent().build());
@@ -50,11 +59,10 @@ public class JiraConfigurationController {
 
     @PostMapping("/configuration")
     public ResponseEntity<?> createConfiguration(
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestHeader(value = "X-User-Id") String userId,
+            @RequestHeader(value = "X-Organization-Id") String orgIdStr,
             @RequestBody JiraConfigurationRequest request) {
-        if (userRole != null && !"ADMIN".equalsIgnoreCase(userRole)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only administrators can manage Jira connection configuration");
-        }
+        UUID orgId = tenantSecurityService.validateMembershipAndRole(userId, orgIdStr, "ADMIN");
 
         if (request.jiraBaseUrl() == null || request.jiraBaseUrl().isBlank()) {
             return ResponseEntity.badRequest().body("jiraBaseUrl is required");
@@ -71,6 +79,7 @@ public class JiraConfigurationController {
 
         JiraConfiguration config = new JiraConfiguration();
         config.setId(UUID.randomUUID());
+        config.setOrganizationId(orgId);
         config.setJiraBaseUrl(request.jiraBaseUrl().trim());
         config.setJiraEmail(request.jiraEmail().trim());
         config.setJiraApiToken(request.jiraApiToken().trim());
@@ -80,7 +89,7 @@ public class JiraConfigurationController {
         config.setUpdatedAt(LocalDateTime.now());
 
         if (config.isActive()) {
-            deactivateOtherConfigurations(null);
+            deactivateOtherConfigurations(orgId, null);
         }
 
         JiraConfiguration saved = repository.save(config);
@@ -89,17 +98,17 @@ public class JiraConfigurationController {
 
     @PutMapping("/configuration")
     public ResponseEntity<?> updateConfiguration(
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestHeader(value = "X-User-Id") String userId,
+            @RequestHeader(value = "X-Organization-Id") String orgIdStr,
             @RequestBody JiraConfigurationRequest request) {
-        if (userRole != null && !"ADMIN".equalsIgnoreCase(userRole)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only administrators can manage Jira connection configuration");
-        }
+        UUID orgId = tenantSecurityService.validateMembershipAndRole(userId, orgIdStr, "ADMIN");
 
-        JiraConfiguration config = repository.findFirstByActiveTrue()
-                .or(() -> repository.findAll().stream().findFirst())
+        JiraConfiguration config = repository.findFirstByOrganizationIdAndActiveTrue(orgId)
+                .or(() -> repository.findByOrganizationId(orgId).stream().findFirst())
                 .orElseGet(() -> {
                     JiraConfiguration newConfig = new JiraConfiguration();
                     newConfig.setId(UUID.randomUUID());
+                    newConfig.setOrganizationId(orgId);
                     newConfig.setCreatedAt(LocalDateTime.now());
                     return newConfig;
                 });
@@ -114,7 +123,7 @@ public class JiraConfigurationController {
         config.setUpdatedAt(LocalDateTime.now());
 
         if (config.isActive()) {
-            deactivateOtherConfigurations(config.getId());
+            deactivateOtherConfigurations(orgId, config.getId());
         }
 
         JiraConfiguration saved = repository.save(config);
@@ -123,11 +132,10 @@ public class JiraConfigurationController {
 
     @PostMapping("/test-connection")
     public ResponseEntity<?> testConnection(
-            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestHeader(value = "X-User-Id") String userId,
+            @RequestHeader(value = "X-Organization-Id") String orgIdStr,
             @RequestBody JiraConfigurationRequest request) {
-        if (userRole != null && !"ADMIN".equalsIgnoreCase(userRole)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only administrators can manage Jira connection configuration");
-        }
+        tenantSecurityService.validateMembershipAndRole(userId, orgIdStr, "ADMIN");
 
         if (request.jiraBaseUrl() == null || request.jiraBaseUrl().isBlank()) {
             return ResponseEntity.badRequest().body("Jira Base URL is required");
@@ -159,8 +167,12 @@ public class JiraConfigurationController {
     }
 
     @GetMapping("/users")
-    public ResponseEntity<?> getJiraUsers(@RequestParam(value = "query", required = false) String query) {
-        JiraConfiguration config = repository.findFirstByActiveTrue().orElse(null);
+    public ResponseEntity<?> getJiraUsers(
+            @RequestHeader(value = "X-User-Id") String userId,
+            @RequestHeader(value = "X-Organization-Id") String orgIdStr,
+            @RequestParam(value = "query", required = false) String query) {
+        UUID orgId = tenantSecurityService.validateMembership(userId, orgIdStr);
+        JiraConfiguration config = repository.findFirstByOrganizationIdAndActiveTrue(orgId).orElse(null);
         if (config == null) {
             return ResponseEntity.ok(List.of());
         }
@@ -180,8 +192,8 @@ public class JiraConfigurationController {
         }
     }
 
-    private void deactivateOtherConfigurations(UUID activeConfigId) {
-        List<JiraConfiguration> configs = repository.findAll();
+    private void deactivateOtherConfigurations(UUID orgId, UUID activeConfigId) {
+        List<JiraConfiguration> configs = repository.findByOrganizationId(orgId);
         for (JiraConfiguration config : configs) {
             if (config.isActive() && !config.getId().equals(activeConfigId)) {
                 config.setActive(false);
@@ -191,7 +203,6 @@ public class JiraConfigurationController {
     }
 
     private JiraConfigurationView toView(JiraConfiguration config) {
-        // Mask the api token for security
         String maskedToken = config.getJiraApiToken() != null && config.getJiraApiToken().length() > 4
                 ? "********" + config.getJiraApiToken().substring(config.getJiraApiToken().length() - 4)
                 : "********";

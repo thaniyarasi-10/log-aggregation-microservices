@@ -105,6 +105,8 @@ export interface ServiceRecord {
   status?: string;
   active?: boolean;
   owners?: ServiceOwner[];
+  serviceSecret?: string;
+  secretGeneratedAt?: string;
 }
 
 export interface ServiceHealth {

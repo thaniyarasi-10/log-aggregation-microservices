@@ -1,0 +1,16 @@
+com\kovanlabs\lynklog\autoconfig\LynkLogAutoConfiguration.class
+com\kovanlabs\lynklog\model\CallerInfo.class
+com\kovanlabs\lynklog\model\VerifyRequest.class
+META-INF\spring-configuration-metadata.json
+com\kovanlabs\lynklog\queue\LynkLogQueue.class
+com\kovanlabs\lynklog\client\VerificationClient.class
+com\kovanlabs\lynklog\parser\LogParser.class
+com\kovanlabs\lynklog\watcher\LynkLogFileWatcher.class
+com\kovanlabs\lynklog\config\KafkaProducerConfig.class
+com\kovanlabs\lynklog\config\LynkLogProperties.class
+com\kovanlabs\lynklog\context\ServiceContext.class
+com\kovanlabs\lynklog\model\ParsedLogEvent.class
+com\kovanlabs\lynklog\producer\LynkKafkaProducer.class
+com\kovanlabs\lynklog\startup\LynkLogStartupVerifier.class
+com\kovanlabs\lynklog\model\VerifyResponse.class
+com\kovanlabs\lynklog\worker\KafkaPublisherWorker.class

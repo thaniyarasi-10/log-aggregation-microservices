@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -18,7 +19,10 @@ import org.springframework.web.client.RestClient;
 
 import com.kovanlabs.servicemanagementservice.dto.ServiceHealthView;
 import com.kovanlabs.servicemanagementservice.model.AppService;
+import com.kovanlabs.servicemanagementservice.model.UserServiceMapping;
 import com.kovanlabs.servicemanagementservice.repository.AppServiceRepository;
+import com.kovanlabs.servicemanagementservice.repository.UserServiceMappingRepository;
+import com.kovanlabs.servicemanagementservice.repository.AppUserRepository;
 
 @Service
 public class ServiceHealthService {
@@ -26,14 +30,20 @@ public class ServiceHealthService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ServiceHealthService.class);
 
     private final AppServiceRepository appServiceRepository;
+    private final UserServiceMappingRepository userServiceMappingRepository;
+    private final AppUserRepository appUserRepository;
     private final RestClient restClient;
 
     @Value("${services.health.window-minutes:15}")
     private int windowMinutes;
 
     public ServiceHealthService(AppServiceRepository appServiceRepository,
+                                UserServiceMappingRepository userServiceMappingRepository,
+                                AppUserRepository appUserRepository,
                                 @Value("${services.health.log-service-url:http://localhost:8081}") String logServiceUrl) {
         this.appServiceRepository = appServiceRepository;
+        this.userServiceMappingRepository = userServiceMappingRepository;
+        this.appUserRepository = appUserRepository;
         this.restClient = RestClient.builder().baseUrl(logServiceUrl).build();
     }
 
@@ -45,10 +55,31 @@ public class ServiceHealthService {
     ) {}
 
     public List<ServiceHealthView> getServicesHealth() {
-        LOGGER.info("Calculating service health based on registered services and log metrics");
+        return getServicesHealth(UUID.randomUUID(), null, "admin");
+    }
+
+    public List<ServiceHealthView> getServicesHealth(UUID orgId, String userEmail, String userRole) {
+//        LOGGER.info("Calculating service health based on registered services and log metrics for user: {}, role: {}", userEmail, userRole);
+
+        boolean isAdmin = userRole != null && userRole.equalsIgnoreCase("admin");
 
         // 1. Fetch registered active services from database
-        List<AppService> registeredServices = appServiceRepository.findByActiveTrueOrderByNameAsc();
+        List<AppService> registeredServices;
+        if (isAdmin) {
+            registeredServices = appServiceRepository.findByOrganizationIdAndActiveTrueOrderByNameAsc(orgId);
+        } else {
+            if (userEmail == null || userEmail.isBlank()) {
+                return List.of();
+            }
+            registeredServices = appUserRepository.findByEmailIgnoreCaseAndActiveTrue(userEmail.trim())
+                    .map(user -> userServiceMappingRepository.findByUser_Id(user.getId()).stream()
+                            .map(UserServiceMapping::getService)
+                            .filter(s -> s.isActive() && orgId.equals(s.getOrganizationId()))
+                            .sorted((a, b) -> a.getName().compareToIgnoreCase(b.getName()))
+                            .toList())
+                    .orElse(List.of());
+        }
+
         Set<String> activeServiceNames = registeredServices.stream()
                 .map(AppService::getName)
                 .filter(Objects::nonNull)
@@ -58,12 +89,13 @@ public class ServiceHealthService {
         // 2. Fetch log metrics from logservice
         List<ServiceLogMetrics> logMetrics = new ArrayList<>();
         try {
-            LOGGER.info("Calling Log Service to fetch service health aggregation for window: {} minutes", windowMinutes);
+//            LOGGER.info("Calling Log Service to fetch service health aggregation for window: {} minutes", windowMinutes);
             List<ServiceLogMetrics> response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/api/logs/service-health")
                             .queryParam("windowMinutes", windowMinutes)
                             .build())
+                    .header("X-Organization-Id", orgId.toString())
                     .retrieve()
                     .body(new ParameterizedTypeReference<List<ServiceLogMetrics>>() {});
 
@@ -108,23 +140,24 @@ public class ServiceHealthService {
             }
         }
 
-        // 4. Also include any unregistered services found in Elasticsearch log metrics!
-        // This is useful in case services exist that are logging but not yet registered.
-        for (Map.Entry<String, ServiceLogMetrics> entry : logMetricsMap.entrySet()) {
-            String logServiceName = entry.getValue().service();
-            String keyName = entry.getKey();
+        // 4. Also include any unregistered services found in Elasticsearch log metrics (ADMIN ONLY!)
+        if (isAdmin) {
+            for (Map.Entry<String, ServiceLogMetrics> entry : logMetricsMap.entrySet()) {
+                String logServiceName = entry.getValue().service();
+                String keyName = entry.getKey();
 
-            if (!activeServiceNames.contains(keyName)) {
-                ServiceLogMetrics metrics = entry.getValue();
-                String status;
-                if (metrics.errorCount() > 0) {
-                    status = "ERROR";
-                } else if (metrics.warnCount() > 0) {
-                    status = "WARNING";
-                } else {
-                    status = "OK";
+                if (!activeServiceNames.contains(keyName)) {
+                    ServiceLogMetrics metrics = entry.getValue();
+                    String status;
+                    if (metrics.errorCount() > 0) {
+                        status = "ERROR";
+                    } else if (metrics.warnCount() > 0) {
+                        status = "WARNING";
+                    } else {
+                        status = "OK";
+                    }
+                    healthViews.add(new ServiceHealthView(logServiceName, status, metrics.lastSeen()));
                 }
-                healthViews.add(new ServiceHealthView(logServiceName, status, metrics.lastSeen()));
             }
         }
 
