@@ -204,12 +204,35 @@ const tokenize = (line: string, isJava: boolean): string => {
 
 type Tab = 'overview' | 'source' | 'json' | 'metadata' | 'raw';
 
-// ─── main component ──────────────────────────────────────────────────────────
+function getConfidenceLabel(score: number): string {
+  if (score >= 90) return 'High Confidence';
+  if (score >= 70) return 'Medium Confidence';
+  return 'Low Confidence';
+}
 
-type Props = {
+function getConfidenceClass(score: number): string {
+  if (score >= 90) return 'high';
+  if (score >= 70) return 'medium';
+  return 'low';
+}
+
+function getSourceBadgeLabel(source?: string): string {
+  if (!source) return 'RULE ENGINE';
+  if (source === 'GEMINI') return 'AI GENERATED';
+  if (source === 'KNOWLEDGE_BASE') return 'KNOWLEDGE BASE';
+  if (source === 'RULE_ENGINE') return 'RULE ENGINE';
+  return source.toUpperCase().replace('_', ' ');
+}
+
+function getSourceBadgeClass(source?: string): string {
+  if (!source) return 'source-rule-engine';
+  return `source-${source.toLowerCase().replace('_', '-')}`;
+}
+
+interface Props {
   log: LogEvent | null;
   onClose: () => void;
-};
+}
 
 export default function LogDrawer({ log, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -458,6 +481,97 @@ export default function LogDrawer({ log, onClose }: Props) {
                     <Field label="Trace ID" value={log.traceId} mono copied={copied} onCopy={copy} copyKey="traceId" />
                     <Field label="Span ID"  value={log.spanId}  mono copied={copied} onCopy={copy} copyKey="spanId" />
                     <Field label="User ID"  value={log.userId}  mono copied={copied} onCopy={copy} copyKey="userId" />
+                  </div>
+                </section>
+              )}
+
+              {/* Automatic Error Resolution Suggestions */}
+              {log.errorType && (
+                <section className="ld-section ld-suggestion-section">
+                  <h4 className="ld-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ color: 'var(--accent)' }}>
+                      <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                    </svg>
+                    {log.suggestionSource === 'GEMINI' || log.suggestionSource === 'KNOWLEDGE_BASE' ? 'AI Analysis' : 'Automatic troubleshooting suggestion'}
+                  </h4>
+                  <div className="ld-suggestion-card">
+                    <div className="ld-suggestion-header">
+                      <div className="ld-suggestion-type">
+                        <span className="ld-field-label">Detected Pattern / Error Type</span>
+                        <span className="ld-suggestion-type-value">{log.errorType}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {log.suggestionSource && (
+                          <div className={`ld-suggestion-source ${getSourceBadgeClass(log.suggestionSource)}`}>
+                            {getSourceBadgeLabel(log.suggestionSource)}
+                          </div>
+                        )}
+                        {log.severity && (
+                          <div className={`ld-suggestion-severity severity-${log.severity.toLowerCase()}`}>
+                            {log.severity}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {log.rootCause && (
+                      <div className="ld-suggestion-block">
+                        <span className="ld-suggestion-subtitle">Root Cause</span>
+                        <p className="ld-suggestion-rootcause-text">{log.rootCause}</p>
+                      </div>
+                    )}
+
+                    {log.confidence !== undefined && log.confidence !== null && log.confidence > 0 && (
+                      <div className="ld-suggestion-block">
+                        <span className="ld-suggestion-subtitle">Confidence Score</span>
+                        <div className="ld-confidence-container">
+                          <div>
+                            <span className={`ld-confidence-badge confidence-${getConfidenceClass(log.confidence)}`}>
+                              {log.confidence}% — {getConfidenceLabel(log.confidence)}
+                            </span>
+                          </div>
+                          <div className="ld-confidence-track">
+                            <div
+                              className={`ld-confidence-bar ${getConfidenceClass(log.confidence)}`}
+                              style={{ width: `${log.confidence}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {log.possibleCauses && log.possibleCauses.length > 0 && (
+                      <div className="ld-suggestion-block">
+                        <span className="ld-suggestion-subtitle">Possible Causes</span>
+                        <ul className="ld-suggestion-list">
+                          {log.possibleCauses.map((cause, i) => (
+                            <li key={i}>{cause}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {log.suggestedFixes && log.suggestedFixes.length > 0 && (
+                      <div className="ld-suggestion-block">
+                        <span className="ld-suggestion-subtitle">Suggested Fixes</span>
+                        <ul className="ld-suggestion-list fixes-list">
+                          {log.suggestedFixes.map((fix, i) => (
+                            <li key={i} className="fix-item">
+                              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className="fix-check-icon">
+                                <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
+                              </svg>
+                              <span>{fix}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {log.suggestionGeneratedAt && (
+                      <div className="ld-suggestion-footer">
+                        Generated at {formatTimestamp(log.suggestionGeneratedAt)}
+                      </div>
+                    )}
                   </div>
                 </section>
               )}

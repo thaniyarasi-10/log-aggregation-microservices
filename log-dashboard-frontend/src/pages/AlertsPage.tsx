@@ -263,16 +263,9 @@ export default function AlertsPage() {
             />
           ) : (
             <div className="table-scroll-area">
-              <table className="log-table" style={{ width: '100%' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: '150px' }}>Timestamp</th>
-                    <th style={{ width: '130px' }}>Service</th>
-                    <th style={{ width: '90px' }}>Severity</th>
                     <th>Alert Message</th>
-                    <th style={{ width: '150px' }}>Jira Ticket</th>
-                    <th style={{ width: '140px' }}>Assigned User</th>
-                    <th style={{ width: '90px' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -291,10 +284,7 @@ export default function AlertsPage() {
                             {item.severity}
                           </span>
                         </td>
-                        <td>
-                          <div className="message-cell" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                             {item.message}
-                          </div>
                         </td>
                         <td>
                           {hasTicket ? (

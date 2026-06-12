@@ -7,6 +7,10 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
+<<<<<<< HEAD
+=======
+import java.util.List;
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
 @Document(collection = "logs")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -32,6 +36,19 @@ public class LogEvent {
     private String project;
     private LogCaller caller;
     private String organizationId;
+
+
+    @Indexed(expireAfterSeconds = 1296000) // 15 days
+    private Instant ingestedAt = Instant.now();
+
+    private String errorType;
+    private List<String> possibleCauses;
+    private List<String> suggestedFixes;
+    private String severity;
+    private String suggestionGeneratedAt;
+    private String rootCause;
+    private Integer confidence;
+    private String suggestionSource;
 
 
     @Indexed(expireAfterSeconds = 1296000) // 15 days
@@ -117,11 +134,76 @@ public class LogEvent {
         this.caller.setLineNumber(lineNumber);
     }
 
+<<<<<<< HEAD
     public String getOrganizationId() {
         return organizationId;
     }
 
     public void setOrganizationId(String organizationId) {
         this.organizationId = organizationId;
+=======
+    public String getErrorType() {
+        return errorType;
+    }
+
+    public void setErrorType(String errorType) {
+        this.errorType = errorType;
+    }
+
+    public List<String> getPossibleCauses() {
+        return possibleCauses;
+    }
+
+    public void setPossibleCauses(List<String> possibleCauses) {
+        this.possibleCauses = possibleCauses;
+    }
+
+    public List<String> getSuggestedFixes() {
+        return suggestedFixes;
+    }
+
+    public void setSuggestedFixes(List<String> suggestedFixes) {
+        this.suggestedFixes = suggestedFixes;
+    }
+
+    public String getSeverity() {
+        return severity;
+    }
+
+    public void setSeverity(String severity) {
+        this.severity = severity;
+    }
+
+    public String getSuggestionGeneratedAt() {
+        return suggestionGeneratedAt;
+    }
+
+    public void setSuggestionGeneratedAt(String suggestionGeneratedAt) {
+        this.suggestionGeneratedAt = suggestionGeneratedAt;
+    }
+
+    public String getRootCause() {
+        return rootCause;
+    }
+
+    public void setRootCause(String rootCause) {
+        this.rootCause = rootCause;
+    }
+
+    public Integer getConfidence() {
+        return confidence;
+    }
+
+    public void setConfidence(Integer confidence) {
+        this.confidence = confidence;
+    }
+
+    public String getSuggestionSource() {
+        return suggestionSource;
+    }
+
+    public void setSuggestionSource(String suggestionSource) {
+        this.suggestionSource = suggestionSource;
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
     }
 }

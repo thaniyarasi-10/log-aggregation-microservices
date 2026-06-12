@@ -100,7 +100,7 @@ export default function LogsTable({ logs, loading, error, searchTerm }: Props) {
                   <td><span className={`tag ${levelClass(String(log.level))}`}>{log.level}</span></td>
                   <td><div className="message-cell">{highlightText(log.message, searchTerm)}</div></td>
                   <td>{log.statusCode ?? '-'}</td>
-                  <td>{log.responseTime ? `${Math.round(log.responseTime)}ms` : '-'}</td>
+                  <td>{log.responseTime !== undefined && log.responseTime !== null ? `${Math.round(log.responseTime)}ms` : '-'}</td>
                 </tr>
               ))}
               {!logs.length && (

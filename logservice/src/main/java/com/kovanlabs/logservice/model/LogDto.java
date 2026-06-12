@@ -2,6 +2,7 @@ package com.kovanlabs.logservice.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class LogDto {
@@ -26,6 +27,15 @@ public class LogDto {
     private LogCaller caller;
     private String organizationId;
 
+    private String errorType;
+    private List<String> possibleCauses;
+    private List<String> suggestedFixes;
+    private String severity;
+    private String suggestionGeneratedAt;
+    private String rootCause;
+    private Integer confidence;
+    private String suggestionSource;
+
     public LogDto() {}
 
     public LogDto(LogEvent event) {
@@ -47,7 +57,18 @@ public class LogDto {
             this.errorDetails = event.getErrorDetails();
             this.tags = event.getTags();
             this.caller = event.getCaller();
+<<<<<<< HEAD
             this.organizationId = event.getOrganizationId();
+=======
+            this.errorType = event.getErrorType();
+            this.possibleCauses = event.getPossibleCauses();
+            this.suggestedFixes = event.getSuggestedFixes();
+            this.severity = event.getSeverity();
+            this.suggestionGeneratedAt = event.getSuggestionGeneratedAt();
+            this.rootCause = event.getRootCause();
+            this.confidence = event.getConfidence();
+            this.suggestionSource = event.getSuggestionSource();
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         }
     }
 
@@ -102,6 +123,32 @@ public class LogDto {
     public LogCaller getCaller() { return caller; }
     public void setCaller(LogCaller caller) { this.caller = caller; }
 
+<<<<<<< HEAD
     public String getOrganizationId() { return organizationId; }
     public void setOrganizationId(String organizationId) { this.organizationId = organizationId; }
+=======
+    public String getErrorType() { return errorType; }
+    public void setErrorType(String errorType) { this.errorType = errorType; }
+
+    public List<String> getPossibleCauses() { return possibleCauses; }
+    public void setPossibleCauses(List<String> possibleCauses) { this.possibleCauses = possibleCauses; }
+
+    public List<String> getSuggestedFixes() { return suggestedFixes; }
+    public void setSuggestedFixes(List<String> suggestedFixes) { this.suggestedFixes = suggestedFixes; }
+
+    public String getSeverity() { return severity; }
+    public void setSeverity(String severity) { this.severity = severity; }
+
+    public String getSuggestionGeneratedAt() { return suggestionGeneratedAt; }
+    public void setSuggestionGeneratedAt(String suggestionGeneratedAt) { this.suggestionGeneratedAt = suggestionGeneratedAt; }
+
+    public String getRootCause() { return rootCause; }
+    public void setRootCause(String rootCause) { this.rootCause = rootCause; }
+
+    public Integer getConfidence() { return confidence; }
+    public void setConfidence(Integer confidence) { this.confidence = confidence; }
+
+    public String getSuggestionSource() { return suggestionSource; }
+    public void setSuggestionSource(String suggestionSource) { this.suggestionSource = suggestionSource; }
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 }

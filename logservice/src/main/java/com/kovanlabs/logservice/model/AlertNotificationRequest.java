@@ -6,6 +6,7 @@ public record AlertNotificationRequest(
         String service,
         String severity,
         String message,
+<<<<<<< HEAD
         int count,
         String organizationId) {
 
@@ -18,4 +19,7 @@ public record AlertNotificationRequest(
             int count) {
         this(recipientEmail, recipientName, service, severity, message, count, null);
     }
+=======
+        int count) {
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 }

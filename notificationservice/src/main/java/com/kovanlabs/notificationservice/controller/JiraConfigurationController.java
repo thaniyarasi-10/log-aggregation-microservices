@@ -59,10 +59,18 @@ public class JiraConfigurationController {
 
     @PostMapping("/configuration")
     public ResponseEntity<?> createConfiguration(
+<<<<<<< HEAD
             @RequestHeader(value = "X-User-Id") String userId,
             @RequestHeader(value = "X-Organization-Id") String orgIdStr,
             @RequestBody JiraConfigurationRequest request) {
         UUID orgId = tenantSecurityService.validateMembershipAndRole(userId, orgIdStr, "ADMIN");
+=======
+            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestBody JiraConfigurationRequest request) {
+        if (userRole != null && !"ADMIN".equalsIgnoreCase(userRole)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only administrators can manage Jira connection configuration");
+        }
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         if (request.jiraBaseUrl() == null || request.jiraBaseUrl().isBlank()) {
             return ResponseEntity.badRequest().body("jiraBaseUrl is required");
@@ -98,6 +106,7 @@ public class JiraConfigurationController {
 
     @PutMapping("/configuration")
     public ResponseEntity<?> updateConfiguration(
+<<<<<<< HEAD
             @RequestHeader(value = "X-User-Id") String userId,
             @RequestHeader(value = "X-Organization-Id") String orgIdStr,
             @RequestBody JiraConfigurationRequest request) {
@@ -105,6 +114,16 @@ public class JiraConfigurationController {
 
         JiraConfiguration config = repository.findFirstByOrganizationIdAndActiveTrue(orgId)
                 .or(() -> repository.findByOrganizationId(orgId).stream().findFirst())
+=======
+            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestBody JiraConfigurationRequest request) {
+        if (userRole != null && !"ADMIN".equalsIgnoreCase(userRole)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only administrators can manage Jira connection configuration");
+        }
+
+        JiraConfiguration config = repository.findFirstByActiveTrue()
+                .or(() -> repository.findAll().stream().findFirst())
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                 .orElseGet(() -> {
                     JiraConfiguration newConfig = new JiraConfiguration();
                     newConfig.setId(UUID.randomUUID());
@@ -132,10 +151,18 @@ public class JiraConfigurationController {
 
     @PostMapping("/test-connection")
     public ResponseEntity<?> testConnection(
+<<<<<<< HEAD
             @RequestHeader(value = "X-User-Id") String userId,
             @RequestHeader(value = "X-Organization-Id") String orgIdStr,
             @RequestBody JiraConfigurationRequest request) {
         tenantSecurityService.validateMembershipAndRole(userId, orgIdStr, "ADMIN");
+=======
+            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestBody JiraConfigurationRequest request) {
+        if (userRole != null && !"ADMIN".equalsIgnoreCase(userRole)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only administrators can manage Jira connection configuration");
+        }
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         if (request.jiraBaseUrl() == null || request.jiraBaseUrl().isBlank()) {
             return ResponseEntity.badRequest().body("Jira Base URL is required");
@@ -167,12 +194,17 @@ public class JiraConfigurationController {
     }
 
     @GetMapping("/users")
+<<<<<<< HEAD
     public ResponseEntity<?> getJiraUsers(
             @RequestHeader(value = "X-User-Id") String userId,
             @RequestHeader(value = "X-Organization-Id") String orgIdStr,
             @RequestParam(value = "query", required = false) String query) {
         UUID orgId = tenantSecurityService.validateMembership(userId, orgIdStr);
         JiraConfiguration config = repository.findFirstByOrganizationIdAndActiveTrue(orgId).orElse(null);
+=======
+    public ResponseEntity<?> getJiraUsers(@RequestParam(value = "query", required = false) String query) {
+        JiraConfiguration config = repository.findFirstByActiveTrue().orElse(null);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         if (config == null) {
             return ResponseEntity.ok(List.of());
         }

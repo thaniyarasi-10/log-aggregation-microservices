@@ -16,15 +16,22 @@ public class ServiceApprovalClient {
 
     private final RestClient restClient;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private org.springframework.cache.CacheManager cacheManager;
+
     public ServiceApprovalClient(@Value("${services.management.base-url:http://localhost:8082}") String baseUrl) {
         this.restClient = RestClient.builder().baseUrl(baseUrl).build();
     }
 
+<<<<<<< HEAD
     @Cacheable(value = "serviceApprovals", key = "#serviceName.trim().toLowerCase()", condition = "#serviceName != null && !#serviceName.isBlank()")
     public boolean isApproved(String serviceName) {
         return fetchApprovedFromApi(serviceName);
     }
 
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
     public boolean fetchApprovedFromApi(String serviceName) {
         if (serviceName == null || serviceName.isBlank()) {
             return false;
@@ -46,5 +53,25 @@ public class ServiceApprovalClient {
             LOGGER.warn("Failed to validate approval for service {}: {}", serviceName, ex.getMessage());
             return false;
         }
+    }
+
+    public boolean isApproved(String serviceName) {
+        if (serviceName == null || serviceName.isBlank()) {
+            return false;
+        }
+        String normalized = serviceName.trim().toLowerCase();
+        if (cacheManager != null) {
+            org.springframework.cache.Cache cache = cacheManager.getCache("serviceApprovals");
+            if (cache != null) {
+                Boolean val = cache.get(normalized, Boolean.class);
+                if (val != null) {
+                    return val;
+                }
+                boolean approved = fetchApprovedFromApi(normalized);
+                cache.put(normalized, approved);
+                return approved;
+            }
+        }
+        return fetchApprovedFromApi(normalized);
     }
 }

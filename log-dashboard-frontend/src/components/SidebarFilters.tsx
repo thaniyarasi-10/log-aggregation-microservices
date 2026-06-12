@@ -8,6 +8,7 @@ type Props = {
   filters: LogFilters;
   services: string[];
   onChange: (next: LogFilters) => void;
+  hideLevels?: boolean;
 };
 
 /**
@@ -20,7 +21,7 @@ type Props = {
  *
  * Selected filters are shown as removable chips below the filter groups.
  */
-export default function SidebarFilters({ filters, services, onChange }: Props) {
+export default function SidebarFilters({ filters, services, onChange, hideLevels = false }: Props) {
   const [searchInput, setSearchInput] = useState(filters.search);
 
   // Debounce search input — avoids a fetch on every keystroke
@@ -76,7 +77,7 @@ export default function SidebarFilters({ filters, services, onChange }: Props) {
   };
 
   const hasActiveFilters =
-    filters.services.length > 0 || filters.levels.length > 0 || filters.search.trim().length > 0;
+    filters.services.length > 0 || (!hideLevels && filters.levels.length > 0) || filters.search.trim().length > 0;
 
   return (
     <aside className="glass-panel filters-sidebar">
@@ -130,13 +131,15 @@ export default function SidebarFilters({ filters, services, onChange }: Props) {
       />
 
       {/* ── Levels multi-select ── */}
-      <CheckboxFilter
-        label="Levels"
-        options={LOG_LEVELS}
-        selected={filters.levels}
-        onChange={handleLevelsChange}
-        colorize
-      />
+      {!hideLevels && (
+        <CheckboxFilter
+          label="Levels"
+          options={LOG_LEVELS}
+          selected={filters.levels}
+          onChange={handleLevelsChange}
+          colorize
+        />
+      )}
 
       {/* ── Active filter chips ── */}
       {hasActiveFilters && (
@@ -154,7 +157,7 @@ export default function SidebarFilters({ filters, services, onChange }: Props) {
               </button>
             </span>
           ))}
-          {filters.levels.map((lvl) => (
+          {!hideLevels && filters.levels.map((lvl) => (
             <span key={lvl} className={`filter-chip filter-chip-level filter-chip-level-${lvl.toLowerCase()}`}>
               {lvl}
               <button

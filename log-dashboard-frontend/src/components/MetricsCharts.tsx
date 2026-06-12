@@ -121,12 +121,20 @@ export default function MetricsCharts({ metrics }: Props) {
   };
 
   const levels = [...metrics.levelDistribution].sort((a, b) => b.count - a.count);
+  const colorMap: Record<string, string> = {
+    ERROR: '#fc4444',
+    WARN: '#f5a524',
+    INFO: '#60a5fa',
+    DEBUG: '#11ab3a',
+  };
   const levelData = {
-    labels: levels.map((entry) => `${entry.level} (${entry.count})`),
+    labels: levels.map((entry) => `${entry.level.toLowerCase()} (${entry.count})`),
     datasets: [
       {
         data: levels.map((entry) => entry.count),
-        backgroundColor: ['#ef4444', '#eab308', '#10b981', '#3b82f6', '#8b5cf6']
+        backgroundColor: levels.map((entry) => colorMap[entry.level.toUpperCase()] || '#94a3b8'),
+        borderWidth: 1,
+        borderColor: '#262f3a'
       }
     ]
   };

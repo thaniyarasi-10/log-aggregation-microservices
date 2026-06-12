@@ -16,7 +16,14 @@ public class UserServiceClient {
     private final RestClient restClient;
 
     public UserServiceClient(@Value("${services.management.base-url:http://localhost:8082}") String baseUrl) {
-        this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+        org.springframework.http.client.SimpleClientHttpRequestFactory requestFactory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(java.time.Duration.ofMillis(1000));
+        requestFactory.setReadTimeout(java.time.Duration.ofMillis(2000));
+
+        this.restClient = RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestFactory(requestFactory)
+                .build();
     }
 
     public String getUserIdByEmail(String email) {

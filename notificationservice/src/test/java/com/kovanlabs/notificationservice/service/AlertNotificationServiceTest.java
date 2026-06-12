@@ -105,6 +105,43 @@ class AlertNotificationServiceTest {
         assertThat(sent).isTrue();
         verify(alertRepository).save(any(Alert.class));
         verify(jiraStoryService).createJiraStoryForAlert(anyString());
+<<<<<<< HEAD
+=======
+        verify(mailSenderProvider, never()).getIfAvailable();
+    }
+
+    @Test
+    void sendAlert_multipleMappedUsers_sendsEmailsToAll() throws Exception {
+        when(userJiraMappingRepository.findEmailsByServiceNameIgnoreCase("payment-service"))
+                .thenReturn(List.of("owner1@test.com", "owner2@test.com"));
+
+        when(userServiceClient.getUserIdByEmail("owner1@test.com")).thenReturn("user-1");
+        when(userServiceClient.getUserIdByEmail("owner2@test.com")).thenReturn("user-2");
+
+        when(preferenceService.getOrCreatePreference("user-1")).thenReturn(preference(true));
+        when(preferenceService.getOrCreatePreference("user-2")).thenReturn(preference(true));
+
+        when(mailSenderProvider.getIfAvailable()).thenReturn(mailSender);
+        when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
+        when(templateBuilder.buildPlainTextEmail(any(Alert.class), anyString(), any())).thenReturn("plain text");
+        when(templateBuilder.buildHtmlEmail(any(Alert.class), anyString(), any())).thenReturn("<html>ok</html>");
+
+        boolean sent = service.sendAlert(new AlertNotificationRequest(
+                null, "Dev User", "payment-service", "CRITICAL", "DB timeout", 5));
+
+        assertThat(sent).isTrue();
+        verify(mailSender, times(2)).send(any(MimeMessage.class));
+        verify(alertRepository).save(any(Alert.class));
+    }
+
+    @Test
+    void sendAlert_selfReferentialAlert_droppedToPreventLoop() {
+        boolean sent = service.sendAlert(new AlertNotificationRequest(
+                "dev@test.com", "Dev User", "notification-service", "ERROR", "Failed to create Jira Story for alertId abc", 1));
+
+        assertThat(sent).isTrue();
+        verify(alertRepository, never()).save(any(Alert.class));
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         verify(mailSenderProvider, never()).getIfAvailable();
     }
 

@@ -26,8 +26,11 @@ import com.kovanlabs.notificationservice.repository.AlertRepository;
 import com.kovanlabs.notificationservice.service.AlertNotificationService;
 import com.kovanlabs.notificationservice.service.NotificationPreferenceService;
 import com.kovanlabs.notificationservice.service.JiraStoryService;
+<<<<<<< HEAD
 import com.kovanlabs.notificationservice.security.TenantSecurityService;
 
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,7 +50,10 @@ class NotificationControllerTest {
     @Mock private AlertNotificationService alertNotificationService;
     @Mock private AlertRepository alertRepository;
     @Mock private JiraStoryService jiraStoryService;
+<<<<<<< HEAD
     @Mock private TenantSecurityService tenantSecurityService;
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
     @InjectMocks private NotificationController controller;
 
@@ -128,7 +134,10 @@ class NotificationControllerTest {
         alert1.setCount(4);
         alert1.setSeverity("CRITICAL");
         alert1.setTimestamp(LocalDateTime.now());
+<<<<<<< HEAD
         alert1.setOrganizationId(orgId);
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         Alert alert2 = new Alert();
         alert2.setService("auth-service");
@@ -136,6 +145,7 @@ class NotificationControllerTest {
         alert2.setCount(2);
         alert2.setSeverity("WARNING");
         alert2.setTimestamp(LocalDateTime.now());
+<<<<<<< HEAD
         alert2.setOrganizationId(orgId);
 
         when(alertRepository.findByOrganizationId(orgId)).thenReturn(List.of(alert1, alert2));
@@ -143,6 +153,12 @@ class NotificationControllerTest {
         mockMvc.perform(get("/api/notifications/alerts")
                         .header("X-User-Id", "user-123")
                         .header("X-Organization-Id", orgId.toString())
+=======
+
+        when(alertRepository.findAll()).thenReturn(List.of(alert1, alert2));
+
+        mockMvc.perform(get("/api/notifications/alerts")
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                         .header("X-User-Role", "DEV")
                         .header("X-User-Services", "payment-service"))
                 .andExpect(status().isOk())
@@ -158,6 +174,7 @@ class NotificationControllerTest {
         alert1.setCount(4);
         alert1.setSeverity("CRITICAL");
         alert1.setTimestamp(LocalDateTime.now());
+<<<<<<< HEAD
         alert1.setOrganizationId(orgId);
 
         when(alertRepository.findByOrganizationId(orgId)).thenReturn(List.of(alert1));
@@ -165,6 +182,12 @@ class NotificationControllerTest {
         mockMvc.perform(get("/api/notifications/alerts")
                         .header("X-User-Id", "user-123")
                         .header("X-Organization-Id", orgId.toString())
+=======
+
+        when(alertRepository.findAll()).thenReturn(List.of(alert1));
+
+        mockMvc.perform(get("/api/notifications/alerts")
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                         .header("X-User-Role", "DEV")
                         .header("X-User-Services", "auth-service"))
                 .andExpect(status().isOk())
@@ -179,7 +202,10 @@ class NotificationControllerTest {
         alert1.setCount(4);
         alert1.setSeverity("CRITICAL");
         alert1.setTimestamp(LocalDateTime.now());
+<<<<<<< HEAD
         alert1.setOrganizationId(orgId);
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         Alert alert2 = new Alert();
         alert2.setService("auth-service");
@@ -187,6 +213,7 @@ class NotificationControllerTest {
         alert2.setCount(2);
         alert2.setSeverity("WARNING");
         alert2.setTimestamp(LocalDateTime.now());
+<<<<<<< HEAD
         alert2.setOrganizationId(orgId);
 
         when(alertRepository.findByOrganizationId(orgId)).thenReturn(List.of(alert1, alert2));
@@ -195,6 +222,12 @@ class NotificationControllerTest {
         mockMvc.perform(get("/api/notifications/alerts")
                         .header("X-User-Id", "user-123")
                         .header("X-Organization-Id", orgId.toString())
+=======
+
+        when(alertRepository.findAll()).thenReturn(List.of(alert1, alert2));
+
+        mockMvc.perform(get("/api/notifications/alerts")
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                         .header("X-User-Role", "ADMIN")
                         .header("X-User-Services", "payment-service"))
                 .andExpect(status().isOk())
@@ -204,6 +237,7 @@ class NotificationControllerTest {
 
     @Test
     void createJiraStoryPost_returnsDetails() throws Exception {
+<<<<<<< HEAD
         UUID alertId = UUID.randomUUID();
         Alert alert = new Alert();
         alert.setId(alertId);
@@ -217,6 +251,12 @@ class NotificationControllerTest {
         mockMvc.perform(post("/api/notifications/alerts/" + alertId + "/jira")
                         .header("X-User-Id", "user-123")
                         .header("X-Organization-Id", orgId.toString()))
+=======
+        com.kovanlabs.notificationservice.dto.JiraStoryResponse response = new com.kovanlabs.notificationservice.dto.JiraStoryResponse("CREATED", "Created successfully", "PAY-12", "http://jira/PAY-12");
+        when(jiraStoryService.createJiraStoryForAlert("alert-123")).thenReturn(response);
+
+        mockMvc.perform(post("/api/notifications/alerts/alert-123/jira"))
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status", equalTo("CREATED")))
                 .andExpect(jsonPath("$.jiraIssueKey", equalTo("PAY-12")));
@@ -224,6 +264,7 @@ class NotificationControllerTest {
 
     @Test
     void createJiraStoryGetRedirect_successful_redirectsToJira() throws Exception {
+<<<<<<< HEAD
         UUID alertId = UUID.randomUUID();
         Alert alert = new Alert();
         alert.setId(alertId);
@@ -237,6 +278,12 @@ class NotificationControllerTest {
         mockMvc.perform(get("/api/notifications/alerts/" + alertId + "/jira")
                         .header("X-User-Id", "user-123")
                         .header("X-Organization-Id", orgId.toString()))
+=======
+        com.kovanlabs.notificationservice.dto.JiraStoryResponse response = new com.kovanlabs.notificationservice.dto.JiraStoryResponse("SUCCESS", "Jira story already exists", "PAY-12", "http://jira/PAY-12");
+        when(jiraStoryService.createJiraStoryForAlert("alert-123")).thenReturn(response);
+
+        mockMvc.perform(get("/api/notifications/alerts/alert-123/jira"))
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                 .andExpect(status().isFound())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Location", "http://jira/PAY-12"));
     }

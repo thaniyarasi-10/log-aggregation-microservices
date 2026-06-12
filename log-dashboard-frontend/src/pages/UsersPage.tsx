@@ -232,15 +232,15 @@ export default function UsersPage() {
         ) : (
           /* Users Directory Table */
           <div className="table-scroll-area">
-            <table className="log-table" style={{ width: '100%' }}>
+            <table className="log-table users-table" style={{ width: '100%' }}>
               <thead>
                 <tr>
-                  <th style={{ width: '110px' }}>User ID</th>
+                  <th>User ID</th>
                   <th>User Name</th>
                   <th>Email</th>
-                  <th style={{ width: '100px' }}>Role</th>
+                  <th>Role</th>
                   <th>Assigned Services</th>
-                  <th style={{ width: '140px', textAlign: 'right' }}>Actions</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>

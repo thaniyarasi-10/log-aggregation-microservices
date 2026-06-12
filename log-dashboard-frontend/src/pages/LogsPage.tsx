@@ -19,6 +19,7 @@ import { apiService } from '../services/api';
 import { PageHeader, MetricCard, FilterToolbar, StatusBadge, EmptyState } from '../components/UI';
 import type { LogEvent, LogFilters, MetricsResponse, ServiceHealth } from '../types';
 import { getLogFingerprint } from '../utils/time';
+import SidebarFilters from '../components/SidebarFilters';
 
 ChartJS.register(
   ArcElement,
@@ -105,6 +106,10 @@ export default function LogsPage() {
   const handleLogClick = (log: LogEvent) => {
     const fingerprint = getLogFingerprint(log);
     navigate(`/explorer?highlight=${encodeURIComponent(fingerprint)}&timeRange=24h`);
+  };
+
+  const handleTopErrorClick = (errorItem: { service: string; message: string }) => {
+    navigate(`/explorer?service=${encodeURIComponent(errorItem.service)}&search=${encodeURIComponent(errorItem.message)}&timeRange=24h`);
   };
 
   const [filters, setFilters] = useState<LogFilters>(defaultFilters);
@@ -233,7 +238,38 @@ export default function LogsPage() {
       : 0;
   }, [metrics.throughputOverTime]);
 
-
+  // Compute Top Errors (grouped by service and message, sorted by frequency count descending)
+  const topErrors = useMemo(() => {
+    const errorMap = new Map<string, { service: string; message: string; level: string; count: number; lastSeen: string }>();
+    
+    logs.forEach((log) => {
+      const isError = ['ERROR', 'CRITICAL', 'FATAL'].includes(String(log.level).toUpperCase()) || (log.statusCode && log.statusCode >= 500);
+      if (!isError) return;
+      
+      const key = `${log.service || 'unknown'}|${log.message || ''}`;
+      const existing = errorMap.get(key);
+      const timestamp = log['@timestamp'] || '';
+      
+      if (existing) {
+        existing.count += 1;
+        if (new Date(timestamp).getTime() > new Date(existing.lastSeen).getTime()) {
+          existing.lastSeen = timestamp;
+        }
+      } else {
+        errorMap.set(key, {
+          service: log.service || 'unknown',
+          message: log.message || '',
+          level: log.level || 'ERROR',
+          count: 1,
+          lastSeen: timestamp
+        });
+      }
+    });
+    
+    return Array.from(errorMap.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [logs]);
 
   // Compute Recent Critical Logs
   const recentCriticalLogs = useMemo(() => {
@@ -280,12 +316,30 @@ export default function LogsPage() {
 
   const levelDistributionData = useMemo(() => {
     const sortedLevels = [...metrics.levelDistribution].sort((a, b) => b.count - a.count);
+    
+    // Exact color mapping to match standard log level aesthetics:
+    // ERROR -> red (#fc4444)
+    // WARN -> orange (#f5a524)
+    // INFO -> blue (#60a5fa)
+    // DEBUG -> green (#11ab3a)
+    // others -> gray (#94a3b8)
+    const colorMap: Record<string, string> = {
+      ERROR: '#fc4444',
+      WARN: '#f5a524',
+      INFO: '#60a5fa',
+      DEBUG: '#11ab3a',
+    };
+
+    const backgroundColors = sortedLevels.map(
+      (l) => colorMap[l.level.toUpperCase()] || '#94a3b8'
+    );
+
     return {
-      labels: sortedLevels.map((l) => `${l.level} (${l.count})`),
+      labels: sortedLevels.map((l) => `${l.level.toLowerCase()} (${l.count})`),
       datasets: [
         {
           data: sortedLevels.map((l) => l.count),
-          backgroundColor: ['#fc4444', '#f5a524', '#60a5fa', '#11ab3a', '#94a3b8'],
+          backgroundColor: backgroundColors,
           borderWidth: 1,
           borderColor: '#262f3a'
         }
@@ -293,155 +347,194 @@ export default function LogsPage() {
     };
   }, [metrics.levelDistribution]);
 
+  const levelDistributionOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top' as const,
+        labels: {
+          color: 'rgb(148, 163, 184)',
+          font: { size: 9 },
+          boxWidth: 12,
+          padding: 8
+        }
+      }
+    }
+  };
+
+  const responseTimeDistributionData = useMemo(() => {
+    return {
+      labels: chartLabels,
+      datasets: [
+        {
+          label: 'Response Time (ms)',
+          data: timeline.map((p) => p.avgResponseTime || 0),
+          backgroundColor: '#3b82f6',
+          borderRadius: 2,
+        }
+      ]
+    };
+  }, [timeline, chartLabels]);
+
+  const throughputTrendsData = useMemo(() => {
+    return {
+      labels: chartLabels,
+      datasets: [
+        {
+          label: 'Logs/sec',
+          data: timeline.map((p) => p.throughputPerSecond || 0),
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          fill: true,
+          tension: 0.35
+        }
+      ]
+    };
+  }, [timeline, chartLabels]);
+
   return (
-    <main className="page-container" style={{ gap: '12px' }}>
-      <FilterToolbar
+    <div className="dashboard-grid">
+      <SidebarFilters
         filters={filters}
         services={serviceOptions}
         onChange={setFilters}
+        hideLevels={true}
       />
 
-      {/* Distinct lightweight KPI stats grid */}
-      <div className="obs-metrics-grid">
-        <MetricCard
-          title="Error Rate"
-          value={`${metrics.errorRate.toFixed(2)}%`}
-          status={metrics.errorRate > 5 ? 'critical' : metrics.errorRate > 1 ? 'warning' : 'healthy'}
-        />
-        <MetricCard
-          title="Avg Response Time"
-          value={`${Math.round(metrics.avgResponseTime)}ms`}
-        />
-        <MetricCard
-          title="Throughput"
-          value={`${throughput.toFixed(2)} req/s`}
-        />
-        <MetricCard
-          title="P95 Latency"
-          value={`${Math.round(metrics.p95Latency)}ms`}
-          status={metrics.p95Latency > 1000 ? 'warning' : 'healthy'}
-        />
-      </div>
-
-      {/* Grouped monitoring section for charts & service health */}
-      <div className="obs-monitoring-section">
-        <div className="obs-canvas-charts-row" style={{ borderBottom: 'none' }}>
-          {/* Chart 1: Error Trends */}
-          <div className="obs-canvas-chart-cell">
-            <span className="obs-canvas-chart-title">Error Trends (Last 24h)</span>
-            <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-              {timeline.length > 0 ? (
-                <Line data={errorTrendsData} options={chartOptions} />
-              ) : (
-                <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
-                  No trend metrics available
-                </div>
-              )}
+      <div className="dashboard-main animate-fade-in">
+        {/* KPI metrics row at the top */}
+        <section className="dashboard-analytics">
+          <div className="metrics-row">
+            <div className="metric-card">
+              <span className="metric-title">Error Rate</span>
+              <span className="metric-value">{`${metrics.errorRate.toFixed(2)}%`}</span>
+            </div>
+            <div className="metric-card">
+              <span className="metric-title">Avg Response Time</span>
+              <span className="metric-value">{`${Math.round(metrics.avgResponseTime)}ms`}</span>
+            </div>
+            <div className="metric-card">
+              <span className="metric-title">Throughput</span>
+              <span className="metric-value">{`${throughput.toFixed(2)} req/s`}</span>
+            </div>
+            <div className="metric-card">
+              <span className="metric-title">P95 Latency</span>
+              <span className="metric-value">{`${Math.round(metrics.p95Latency)}ms`}</span>
             </div>
           </div>
 
-          {/* Chart 2: Log Level Distribution */}
-          <div className="obs-canvas-chart-cell">
-            <span className="obs-canvas-chart-title">Level Distribution</span>
-            <div style={{ flex: 1, position: 'relative', minHeight: 0, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              {metrics.levelDistribution.length > 0 ? (
-                <div style={{ height: '160px', width: '100%' }}>
-                  <Doughnut
-                    data={levelDistributionData}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: {
-                        legend: {
-                          position: 'right',
-                          labels: { color: 'rgb(148, 163, 184)', font: { size: 9 } }
-                        }
-                      }
-                    }}
-                  />
-                </div>
-              ) : (
-                <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>No log distributions found</div>
-              )}
+          {/* First row of charts */}
+          <div className="charts-row">
+            <div className="chart-container">
+              <h3>Error Rate Over Time</h3>
+              <div className="chart-wrapper">
+                {timeline.length > 0 ? (
+                  <Line data={errorTrendsData} options={chartOptions} />
+                ) : (
+                  <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
+                    No trend metrics available
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="chart-container">
+              <h3>Response Time Distribution</h3>
+              <div className="chart-wrapper">
+                {timeline.length > 0 ? (
+                  <Bar data={responseTimeDistributionData} options={chartOptions} />
+                ) : (
+                  <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
+                    No distribution metrics available
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Chart 3: Service Health Overview */}
-          <div className="obs-canvas-chart-cell" style={{ overflowY: 'auto' }}>
-            <span className="obs-canvas-chart-title">Service Health Overview</span>
-            <div style={{ marginTop: '6px', overflowX: 'auto' }}>
-              {serviceHealth.length > 0 ? (
-                <table className="obs-health-table" style={{ width: '100%' }}>
+          {/* Second row of charts */}
+          <div className="charts-row">
+            <div className="chart-container">
+              <h3>Throughput Over Time</h3>
+              <div className="chart-wrapper">
+                {timeline.length > 0 ? (
+                  <Line data={throughputTrendsData} options={chartOptions} />
+                ) : (
+                  <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
+                    No throughput metrics available
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="chart-container">
+              <h3>Level Distribution</h3>
+              <div className="chart-wrapper" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                {metrics.levelDistribution.length > 0 ? (
+                  <div style={{ height: '160px', width: '100%' }}>
+                    <Doughnut data={levelDistributionData} options={levelDistributionOptions} />
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>No log distributions found</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Top Errors table panel at the bottom */}
+        <section className="dashboard-logs">
+          <div className="table-container">
+            <div className="table-header">
+              <h2>Top Errors (by Frequency)</h2>
+            </div>
+            <div className="table-scroll-area">
+              {topErrors.length > 0 ? (
+                <table className="log-table top-errors-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '100px' }}>Status</th>
-                      <th>Service Name</th>
-                      <th style={{ width: '95px', textAlign: 'right' }}>Error Count</th>
-                      <th style={{ width: '70px', textAlign: 'right' }}>Health</th>
+                      <th style={{ width: '20%' }}>Service</th>
+                      <th style={{ width: '10%' }}>Level</th>
+                      <th style={{ width: '45%' }}>Error Message</th>
+                      <th style={{ width: '10%', textAlign: 'center' }}>Occurrences</th>
+                      <th style={{ width: '15%' }}>Last Occurred</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {serviceHealth.map((item) => {
-                      const hasSentLogs = !!item.lastSeen;
-                      const recentErrors = hasSentLogs
-                        ? recentCriticalLogs.filter(
-                            (l) => l.service.toLowerCase() === item.service.toLowerCase() && (l.level === 'ERROR' || l.level === 'CRITICAL')
-                          ).length
-                        : 0;
+                    {topErrors.map((errorItem, i) => {
+                      const isError = ['ERROR', 'CRITICAL', 'FATAL'].includes(String(errorItem.level).toUpperCase());
+                      const isWarn = String(errorItem.level).toUpperCase() === 'WARN';
+                      const isInfo = String(errorItem.level).toUpperCase() === 'INFO';
+                      const isDebug = String(errorItem.level).toUpperCase() === 'DEBUG';
 
-                      let healthVal = '100.0%';
-                      if (item.status === 'ERROR') {
-                        healthVal = '89.5%';
-                      } else if (item.status === 'WARNING') {
-                        healthVal = '96.2%';
-                      } else if (item.status === 'NO_DATA' || !hasSentLogs) {
-                        healthVal = '—';
-                      }
-
-                      const displayErrors = hasSentLogs ? recentErrors : '—';
-
-                      // Compact status rendering (Neutral status dot + compact label)
-                      const renderStatus = () => {
-                        if (!hasSentLogs) {
-                          return (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: 'var(--text-dim)' }} />
-                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>No Data</span>
-                            </div>
-                          );
-                        }
-                        const s = String(item.status).toUpperCase();
-                        let dotColor = 'var(--text-dim)';
-                        let label = 'No Data';
-                        if (s === 'OK' || s === 'HEALTHY' || s === 'ACTIVE') {
-                          dotColor = 'var(--level-debug)';
-                          label = 'Healthy';
-                        } else if (s === 'WARNING' || s === 'WARN') {
-                          dotColor = 'var(--level-warn)';
-                          label = 'Warning';
-                        } else if (s === 'ERROR' || s === 'CRITICAL' || s === 'HIGH') {
-                          dotColor = 'var(--level-error)';
-                          label = 'Critical';
-                        }
-                        return (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: dotColor }} />
-                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>{label}</span>
-                          </div>
-                        );
-                      };
+                      let tagClass = 'tag';
+                      if (isError) tagClass += ' tag-error';
+                      else if (isWarn) tagClass += ' tag-warn';
+                      else if (isInfo) tagClass += ' tag-info';
+                      else if (isDebug) tagClass += ' tag-debug';
 
                       return (
-                        <tr key={item.service}>
-                          <td>{renderStatus()}</td>
-                          <td style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }} title={item.service}>
-                            {item.service}
+                        <tr
+                          key={i}
+                          onClick={() => handleTopErrorClick(errorItem)}
+                          title="Click to search in Log Explorer"
+                        >
+                          <td style={{ fontWeight: 600 }}>{errorItem.service}</td>
+                          <td>
+                            <span className={tagClass}>{errorItem.level}</span>
                           </td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: hasSentLogs && recentErrors > 0 ? 600 : 400, color: hasSentLogs && recentErrors > 0 ? 'var(--level-error)' : 'var(--text-secondary)' }}>
-                            {displayErrors}
+                          <td className="message-cell" title={errorItem.message}>
+                            {errorItem.message}
                           </td>
-                          <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: !hasSentLogs ? 'var(--text-secondary)' : item.status === 'ERROR' ? 'var(--level-error)' : item.status === 'WARNING' ? 'var(--level-warn)' : 'var(--level-debug)' }}>
-                            {healthVal}
+                          <td style={{ textAlign: 'center', fontWeight: 600, color: '#fc4444' }}>
+                            {errorItem.count}
+                          </td>
+                          <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
+                            {errorItem.lastSeen
+                              ? new Date(errorItem.lastSeen).toLocaleString('en-IN', {
+                                  timeZone: 'Asia/Kolkata',
+                                  hour12: true,
+                                })
+                              : 'N/A'}
                           </td>
                         </tr>
                       );
@@ -449,61 +542,14 @@ export default function LogsPage() {
                   </tbody>
                 </table>
               ) : (
-                !healthLoading && (
-                  <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '16px', fontSize: '0.78rem' }}>
-                    No active services connected
-                  </div>
-                )
+                <div className="state-message">
+                  No error logs matching the current filters.
+                </div>
               )}
             </div>
           </div>
-        </div>
+        </section>
       </div>
-
-      {/* Standalone Recent Logs area */}
-      <div className="obs-table-workspace-panel">
-        <div className="obs-canvas-logs-row">
-          <span className="obs-canvas-logs-title">Recent Critical / Error Logs</span>
-          <div style={{ overflowX: 'auto' }}>
-            {recentCriticalLogs.length > 0 ? (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-dim)' }}>
-                    <th style={{ padding: '6px 8px' }}>Timestamp</th>
-                    <th style={{ padding: '6px 8px' }}>Service</th>
-                    <th style={{ padding: '6px 8px' }}>Level</th>
-                    <th style={{ padding: '6px 8px' }}>Message</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentCriticalLogs.map((log, i) => (
-                    <tr
-                      key={i}
-                      className="obs-recent-log-row"
-                      style={{ borderBottom: '1px solid var(--border-subtle)', background: 'rgba(252, 68, 68, 0.02)' }}
-                      onClick={() => handleLogClick(log)}
-                      title="Click to view in Log Explorer"
-                    >
-                      <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)' }}>
-                        {log['@timestamp'] ? new Date(log['@timestamp']).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'N/A'}
-                      </td>
-                      <td style={{ padding: '6px 8px', fontWeight: 600 }}>{log.service}</td>
-                      <td style={{ padding: '6px 8px' }}>
-                        <span className="tag tag-error" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>{log.level}</span>
-                      </td>
-                      <td style={{ padding: '6px 8px', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{log.message}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: '24px', fontSize: '0.8rem' }}>
-                No critical logs or HTTP 500 errors detected
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </main>
+    </div>
   );
 }

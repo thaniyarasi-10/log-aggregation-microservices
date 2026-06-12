@@ -199,12 +199,17 @@ class JiraConfigurationControllerTest {
                 "https://company.atlassian.net", "arun@company.com", "fake-token-1234", "PAY", true
         );
 
+<<<<<<< HEAD
         when(tenantSecurityService.validateMembershipAndRole(any(), any(), eq("ADMIN")))
                 .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Required role ADMIN not found"));
 
         mockMvc.perform(post("/api/jira/configuration")
                         .header("X-User-Id", "user-123")
                         .header("X-Organization-Id", orgId.toString())
+=======
+        mockMvc.perform(post("/api/jira/configuration")
+                        .header("X-User-Role", "DEV")
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isForbidden());
@@ -216,12 +221,17 @@ class JiraConfigurationControllerTest {
                 "https://new-company.atlassian.net", null, null, null, null
         );
 
+<<<<<<< HEAD
         when(tenantSecurityService.validateMembershipAndRole(any(), any(), eq("ADMIN")))
                 .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Required role ADMIN not found"));
 
         mockMvc.perform(put("/api/jira/configuration")
                         .header("X-User-Id", "user-123")
                         .header("X-Organization-Id", orgId.toString())
+=======
+        mockMvc.perform(put("/api/jira/configuration")
+                        .header("X-User-Role", "DEV")
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isForbidden());
@@ -233,12 +243,17 @@ class JiraConfigurationControllerTest {
                 "https://company.atlassian.net", "arun@company.com", "fake-token-1234", "PAY", true
         );
 
+<<<<<<< HEAD
         when(tenantSecurityService.validateMembershipAndRole(any(), any(), eq("ADMIN")))
                 .thenThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "Required role ADMIN not found"));
 
         mockMvc.perform(post("/api/jira/test-connection")
                         .header("X-User-Id", "user-123")
                         .header("X-Organization-Id", orgId.toString())
+=======
+        mockMvc.perform(post("/api/jira/test-connection")
+                        .header("X-User-Role", "DEV")
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isForbidden());

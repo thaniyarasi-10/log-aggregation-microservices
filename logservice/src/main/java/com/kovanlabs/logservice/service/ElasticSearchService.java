@@ -27,9 +27,24 @@ public class ElasticSearchService {
         try {
 //            LOGGER.debug("Saving log to Elasticsearch via repository - service: {}, timestamp: {}",
 //                    logEvent.getService(), logEvent.getTimestamp());
-            return elasticRepository.save(logEvent);
+//            LOGGER.info("Saving to Elasticsearch");
+            boolean saved = elasticRepository.save(logEvent);
+//            LOGGER.info("Saved to Elasticsearch");
+            return saved;
         } catch (Exception e) {
             LOGGER.error("Failed to save log to Elasticsearch: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
+    public boolean saveAll(java.util.List<LogEvent> logEvents) {
+        if (logEvents == null || logEvents.isEmpty()) {
+            return true;
+        }
+        try {
+            return elasticRepository.saveAll(logEvents);
+        } catch (Exception e) {
+            LOGGER.error("Failed to bulk save logs to Elasticsearch: {}", e.getMessage(), e);
             return false;
         }
     }

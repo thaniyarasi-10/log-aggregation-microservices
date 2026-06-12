@@ -35,7 +35,19 @@ import com.kovanlabs.notificationservice.repository.AlertRepository;
 import com.kovanlabs.notificationservice.service.AlertNotificationService;
 import com.kovanlabs.notificationservice.service.NotificationPreferenceService;
 import com.kovanlabs.notificationservice.service.JiraStoryService;
+<<<<<<< HEAD
 import com.kovanlabs.notificationservice.security.TenantSecurityService;
+=======
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -47,19 +59,29 @@ public class NotificationController {
     private final AlertNotificationService alertNotificationService;
     private final AlertRepository alertRepository;
     private final JiraStoryService jiraStoryService;
+<<<<<<< HEAD
     private final TenantSecurityService tenantSecurityService;
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
     public NotificationController(
             NotificationPreferenceService preferenceService,
             AlertNotificationService alertNotificationService,
             AlertRepository alertRepository,
+<<<<<<< HEAD
             JiraStoryService jiraStoryService,
             TenantSecurityService tenantSecurityService) {
+=======
+            JiraStoryService jiraStoryService) {
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         this.preferenceService = preferenceService;
         this.alertNotificationService = alertNotificationService;
         this.alertRepository = alertRepository;
         this.jiraStoryService = jiraStoryService;
+<<<<<<< HEAD
         this.tenantSecurityService = tenantSecurityService;
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
     }
 
     @GetMapping("/preferences")
@@ -86,16 +108,29 @@ public class NotificationController {
 
     @PostMapping("/alerts")
     public ResponseEntity<Map<String, Object>> sendAlert(@RequestBody AlertNotificationRequest request) {
+<<<<<<< HEAD
         // Log ingestion alert triggering
         boolean sent = alertNotificationService.sendAlert(request);
+=======
+        if (request != null) {
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    alertNotificationService.sendAlert(request);
+                } catch (Exception ex) {
+                    LOGGER.error("Failed to process alert asynchronously: {}", ex.getMessage(), ex);
+                }
+            });
+        }
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("status", sent ? "accepted" : "skipped");
+        response.put("status", "accepted");
         response.put("recipientEmail", request != null ? request.recipientEmail() : null);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/alerts")
     public ResponseEntity<Map<String, List<AlertItemView>>> getAlerts(
+<<<<<<< HEAD
             @RequestHeader(value = "X-User-Id") String userId,
             @RequestHeader(value = "X-Organization-Id") String orgIdStr,
             @RequestHeader(value = "X-User-Services", required = false) String userServices) {
@@ -109,6 +144,11 @@ public class NotificationController {
         } catch (Exception ignored) {}
 
         List<Alert> alerts = alertRepository.findByOrganizationId(orgId);
+=======
+            @RequestHeader(value = "X-User-Role", required = false) String userRole,
+            @RequestHeader(value = "X-User-Services", required = false) String userServices) {
+        List<Alert> alerts = alertRepository.findAll();
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         Map<String, List<AlertItemView>> grouped = alerts.stream()
                 .map(a -> new AlertItemView(
                         a.getService(),
@@ -119,7 +159,12 @@ public class NotificationController {
                 ))
                 .collect(Collectors.groupingBy(AlertItemView::service));
 
+<<<<<<< HEAD
         if (!isAdmin) {
+=======
+        // Apply RBAC filtering only if X-User-Role is present and it is DEV (non-ADMIN)
+        if (userRole != null && !"ADMIN".equalsIgnoreCase(userRole)) {
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
             List<String> allowedServices = new ArrayList<>();
             if (userServices != null && !userServices.isBlank()) {
                 allowedServices = Arrays.stream(userServices.split(","))
@@ -145,6 +190,7 @@ public class NotificationController {
     }
 
     @PostMapping("/alerts/{alertId}/jira")
+<<<<<<< HEAD
     public ResponseEntity<JiraStoryResponse> createJiraStoryPost(
             @RequestHeader(value = "X-User-Id") String userId,
             @RequestHeader(value = "X-Organization-Id") String orgIdStr,
@@ -156,11 +202,15 @@ public class NotificationController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Alert does not belong to your organization");
         }
         
+=======
+    public ResponseEntity<JiraStoryResponse> createJiraStoryPost(@PathVariable("alertId") String alertId) {
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         JiraStoryResponse response = jiraStoryService.createJiraStoryForAlert(alertId);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/alerts/{alertId}/jira")
+<<<<<<< HEAD
     public ResponseEntity<Void> createJiraStoryGetRedirect(
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-Organization-Id", required = false) String orgIdStr,
@@ -177,6 +227,10 @@ public class NotificationController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Alert does not belong to your organization");
         }
 
+=======
+    public ResponseEntity<Void> createJiraStoryGetRedirect(@PathVariable("alertId") String alertId) {
+        LOGGER.info("GET endpoint /alerts/{}/jira hit, alertId received: {}", alertId, alertId);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         try {
             LOGGER.info("Triggering Jira story creation/lookup for alertId: {}", alertId);
             JiraStoryResponse response = jiraStoryService.createJiraStoryForAlert(alertId);

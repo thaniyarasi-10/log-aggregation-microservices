@@ -516,7 +516,7 @@ export default function SettingsPage() {
                 ) : (
                   /* Admin Mappings Table */
                   <div className="table-scroll-area">
-                    <table className="log-table" style={{ width: '100%', margin: 0 }}>
+                    <table className="log-table mappings-table" style={{ width: '100%', margin: 0 }}>
                       <thead>
                         <tr>
                           <th>User Name</th>

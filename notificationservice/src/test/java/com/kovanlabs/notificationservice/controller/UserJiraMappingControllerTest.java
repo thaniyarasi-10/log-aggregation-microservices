@@ -98,7 +98,10 @@ class UserJiraMappingControllerTest {
         // When requesting as Arun (dev), it matches and returns
         mockMvc.perform(get("/api/jira/user-mappings")
                         .header("X-User-Id", "Arun")
+<<<<<<< HEAD
                         .header("X-Organization-Id", orgId.toString())
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                         .header("X-User-Role", "DEV"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -109,7 +112,10 @@ class UserJiraMappingControllerTest {
         when(repository.findByUserId("Bob")).thenReturn(Optional.empty());
         mockMvc.perform(get("/api/jira/user-mappings")
                         .header("X-User-Id", "Bob")
+<<<<<<< HEAD
                         .header("X-Organization-Id", orgId.toString())
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                         .header("X-User-Role", "DEV"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
@@ -147,7 +153,10 @@ class UserJiraMappingControllerTest {
 
         mockMvc.perform(post("/api/jira/user-mappings")
                         .header("X-User-Id", "Arun")
+<<<<<<< HEAD
                         .header("X-Organization-Id", orgId.toString())
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                         .header("X-User-Role", "DEV")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
@@ -162,7 +171,10 @@ class UserJiraMappingControllerTest {
 
         mockMvc.perform(post("/api/jira/user-mappings")
                         .header("X-User-Id", "Arun")
+<<<<<<< HEAD
                         .header("X-Organization-Id", orgId.toString())
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                         .header("X-User-Role", "DEV")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(mapper.writeValueAsString(req)))
@@ -190,6 +202,41 @@ class UserJiraMappingControllerTest {
         UserJiraMappingRequest req = new UserJiraMappingRequest(
                 "Arun", "abc123_updated", "Arun Kumar Updated", true
         );
+<<<<<<< HEAD
+=======
+
+        when(repository.findById(mappingId)).thenReturn(Optional.of(mapping));
+        when(repository.save(any(UserJiraMapping.class))).thenReturn(mapping);
+
+        mockMvc.perform(put("/api/jira/user-mappings/{id}", mappingId)
+                        .header("X-User-Id", "Arun")
+                        .header("X-User-Role", "DEV")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(req)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void updateMapping_asDev_forOther_returnsForbidden() throws Exception {
+        UserJiraMappingRequest req = new UserJiraMappingRequest(
+                "Bob", "abc123_updated", "Arun Kumar Updated", true
+        );
+
+        when(repository.findById(mappingId)).thenReturn(Optional.of(mapping));
+
+        // Arun (dev) trying to modify a mapping belonging to Bob, or change mapping owner to Bob
+        mockMvc.perform(put("/api/jira/user-mappings/{id}", mappingId)
+                        .header("X-User-Id", "Bob") // mapping belongs to Arun, logged in user is Bob
+                        .header("X-User-Role", "DEV")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(mapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void deleteMapping_exists_returns204() throws Exception {
+        when(repository.findById(mappingId)).thenReturn(Optional.of(mapping));
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         when(repository.findById(mappingId)).thenReturn(Optional.of(mapping));
         when(repository.save(any(UserJiraMapping.class))).thenReturn(mapping);
@@ -237,7 +284,10 @@ class UserJiraMappingControllerTest {
 
         mockMvc.perform(delete("/api/jira/user-mappings/{id}", mappingId)
                         .header("X-User-Id", "Bob")
+<<<<<<< HEAD
                         .header("X-Organization-Id", orgId.toString())
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                         .header("X-User-Role", "DEV"))
                 .andExpect(status().isForbidden());
     }

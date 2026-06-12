@@ -17,6 +17,14 @@ export interface LogEvent {
   responseTime?: number;
   errorCode?: string;
   errorDetails?: string;
+  errorType?: string;
+  possibleCauses?: string[];
+  suggestedFixes?: string[];
+  severity?: string;
+  suggestionGeneratedAt?: string;
+  rootCause?: string;
+  confidence?: number;
+  suggestionSource?: string;
   caller?: {
     class?: string;
     method?: string;
@@ -107,6 +115,12 @@ export interface ServiceRecord {
   owners?: ServiceOwner[];
   serviceSecret?: string;
   secretGeneratedAt?: string;
+}
+
+export interface ServiceHealth {
+  service: string;
+  status: 'OK' | 'WARNING' | 'ERROR' | 'NO_DATA';
+  lastSeen: string | null;
 }
 
 export interface ServiceHealth {

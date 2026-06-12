@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -103,6 +104,7 @@ public class LogController {
                     .toList();
         }
 
+<<<<<<< HEAD
         List<String> allowedServices = new ArrayList<>();
         if (userServices != null && !userServices.isBlank()) {
             allowedServices = Arrays.stream(userServices.split(","))
@@ -118,6 +120,9 @@ public class LogController {
                 List.of(),
                 organizationId
         );
+=======
+        AuthenticatedUserContext context = buildAccessContext(userEmail, userRole, userServices);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         List<LogEvent> results = elasticRepository.searchMulti(
                 resolvedServices,
@@ -154,6 +159,7 @@ public class LogController {
         String finalServices = (services != null && !services.isBlank()) ? services : service;
         String finalLevels = (levels != null && !levels.isBlank()) ? levels : level;
 
+<<<<<<< HEAD
         List<String> allowedServices = new ArrayList<>();
         if (userServices != null && !userServices.isBlank()) {
             allowedServices = Arrays.stream(userServices.split(","))
@@ -169,6 +175,9 @@ public class LogController {
                 List.of(),
                 organizationId
         );
+=======
+        AuthenticatedUserContext context = buildAccessContext(userEmail, userRole, userServices);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         Map<String, Object> metrics = elasticRepository.getMetrics(
                 finalServices,
@@ -191,6 +200,7 @@ public class LogController {
             @RequestHeader(value = "X-User-Services", required = false) String userServices,
             @RequestHeader(value = "X-Organization-Id", required = false) String organizationId) {
 
+<<<<<<< HEAD
         List<String> allowedServices = new ArrayList<>();
         if (userServices != null && !userServices.isBlank()) {
             allowedServices = Arrays.stream(userServices.split(","))
@@ -206,6 +216,9 @@ public class LogController {
                 List.of(),
                 organizationId
         );
+=======
+        AuthenticatedUserContext context = buildAccessContext(userEmail, userRole, userServices);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         List<String> services = elasticRepository.getDistinctServices(null, null, 100, context);
         return ResponseEntity.ok(services);
@@ -275,6 +288,7 @@ public class LogController {
             @RequestHeader(value = "X-User-Services", required = false) String userServices,
             @RequestHeader(value = "X-Organization-Id", required = false) String organizationId) {
 
+<<<<<<< HEAD
         List<String> allowedServices = new ArrayList<>();
         if (userServices != null && !userServices.isBlank()) {
             allowedServices = Arrays.stream(userServices.split(","))
@@ -290,6 +304,9 @@ public class LogController {
                 List.of(),
                 organizationId
         );
+=======
+        AuthenticatedUserContext context = buildAccessContext(userEmail, userRole, userServices);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         Map<String, List<AlertItemView>> alerts = elasticRepository.calculateAlerts(context);
         return ResponseEntity.ok(alerts);
@@ -297,10 +314,16 @@ public class LogController {
 
     @GetMapping("/service-health")
     public ResponseEntity<List<ServiceLogMetrics>> getServiceHealth(
+<<<<<<< HEAD
             @RequestParam(value = "windowMinutes", defaultValue = "15") int windowMinutes,
             @RequestHeader(value = "X-Organization-Id", required = false) String organizationId) {
         LOGGER.info("REST request to get service health metrics for last {} minutes", windowMinutes);
         List<ServiceLogMetrics> metrics = elasticRepository.getServiceHealthMetrics(windowMinutes, organizationId);
+=======
+            @RequestParam(value = "windowMinutes", defaultValue = "15") int windowMinutes) {
+        LOGGER.info("REST request to get service health metrics for last {} minutes", windowMinutes);
+        List<ServiceLogMetrics> metrics = elasticRepository.getServiceHealthMetrics(windowMinutes);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         return ResponseEntity.ok(metrics);
     }
 
@@ -323,5 +346,29 @@ public class LogController {
             LOGGER.error("Failed to retrieve source code: {}", e.getMessage(), e);
             return ResponseEntity.status(500).body(Map.of("message", "Failed to retrieve source code: " + e.getMessage()));
         }
+    }
+
+    private AuthenticatedUserContext buildAccessContext(String userEmail, String userRole, String userServices) {
+        List<String> allowedServices = new ArrayList<>();
+        if (userServices != null && !userServices.isBlank()) {
+            allowedServices = Arrays.stream(userServices.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .toList();
+        }
+
+        UserRole role = isAdminRole(userRole) ? UserRole.ADMIN : UserRole.DEV;
+        return new AuthenticatedUserContext(
+                userEmail != null && !userEmail.isBlank() ? userEmail : "unknown@local",
+                role,
+                allowedServices
+        );
+    }
+
+    private boolean isAdminRole(String userRole) {
+        if (userRole == null || userRole.isBlank()) {
+            return false;
+        }
+        return userRole.trim().toUpperCase(Locale.ROOT).contains("ADMIN");
     }
 }

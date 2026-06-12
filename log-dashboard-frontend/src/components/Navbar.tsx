@@ -67,14 +67,12 @@ function DashboardIcon() {
   );
 }
 
-// ── ExplorerIcon SVG
+// ── ExplorerIcon SVG (Terminal/Log Prompt Icon)
 function ExplorerIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="11" cy="11" r="8" />
-      <line x1="21" y1="21" x2="16.65" y2="16.65" />
-      <line x1="11" y1="8" x2="11" y2="14" />
-      <line x1="8" y1="11" x2="14" y2="11" />
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" y1="19" x2="20" y2="19" />
     </svg>
   );
 }
@@ -129,16 +127,12 @@ export default function Navbar() {
   const { theme, toggleTheme } = useTheme();
 
   const [profileOpen, setProfileOpen]   = useState(false);
-  const [notifOpen, setNotifOpen]       = useState(false);
   const [notifPanelOpen, setNotifPanelOpen] = useState(false);
-  const [alerts, setAlerts]             = useState<AlertItem[]>([]);
-  const [alertsLoading, setAlertsLoading] = useState(false);
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const profileRef = useRef<HTMLDivElement>(null);
-  const notifRef = useRef<HTMLDivElement>(null);
 
   const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -173,50 +167,12 @@ export default function Navbar() {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
       }
-      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
-        setNotifOpen(false);
-      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Background polling — runs every 60 s regardless of panel state.
-  // This keeps the red-dot indicator accurate without requiring the user to open the panel.
-  useEffect(() => {
-    let active = true;
 
-    const poll = async () => {
-      try {
-        const data = await apiService.fetchAlerts();
-        if (active) setAlerts(data);
-      } catch {
-        // silently ignore — stale data is fine for the indicator
-      }
-    };
-
-    void poll(); // immediate fetch on mount
-    const timer = window.setInterval(() => { void poll(); }, 60_000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  // Refresh immediately when the panel is opened so the user always sees fresh data.
-  // Don't show the loading spinner if we already have alerts — just update silently.
-  useEffect(() => {
-    if (!notifOpen) return;
-    let active = true;
-    // Only show loading spinner on first open (no existing data)
-    if (alerts.length === 0) setAlertsLoading(true);
-    apiService.fetchAlerts()
-      .then((data) => { if (active) setAlerts(data); })
-      .catch(() => { /* keep existing alerts on error */ })
-      .finally(() => { if (active) setAlertsLoading(false); });
-    return () => { active = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notifOpen]);
 
   const displayName = user?.name || user?.email || 'User';
   const displayRole = role || 'User';
@@ -248,56 +204,7 @@ export default function Navbar() {
           >
             {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
-
-          {/* Notification bell — red dot indicator, no count number */}
-          <div className="header-dropdown-wrap" ref={notifRef}>
-            <button
-              className={`btn header-icon-btn ${notifOpen ? 'active' : ''}`}
-              onClick={() => { setNotifOpen((o) => !o); setProfileOpen(false); }}
-              aria-label="Notifications"
-              title="Alerts"
-            >
-              <BellIcon />
-              {alerts.length > 0 && !notifOpen && (
-                <span className="header-notif-dot" aria-hidden="true" />
-              )}
-            </button>
-
-            {notifOpen && (
-              <div className="header-dropdown header-notif-panel">
-                <div className="header-dropdown-title">Alerts</div>
-                {alertsLoading && (
-                  <div className="header-dropdown-empty">Loading...</div>
-                )}
-                {!alertsLoading && alerts.length === 0 && (
-                  <div className="header-dropdown-empty">No alerts</div>
-                )}
-                {!alertsLoading && alerts.length > 0 && (
-                  <div className="header-notif-list">
-                    {alerts.map((alert, i) => (
-                      <div
-                        key={`${alert.service}-${alert.timestamp ?? i}`}
-                        className={`header-notif-row ${alert.severity === 'CRITICAL' || alert.severity === 'HIGH' ? 'notif-critical' : 'notif-warning'}`}
-                      >
-                        <div className="header-notif-top">
-                          <span className="header-notif-service">{alert.service}</span>
-                          <span className={`tag ${alert.severity === 'CRITICAL' || alert.severity === 'HIGH' ? 'tag-error' : 'tag-warn'}`}>
-                            {alert.severity}
-                          </span>
-                        </div>
-                        <div className="header-notif-message">{alert.message}</div>
-                        {alert.timestamp && (
-                          <div className="header-notif-time">
-                            {new Date(alert.timestamp).toLocaleString()}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          {/* Notification bell removed */}
         </div>
       </header>
 
@@ -305,7 +212,7 @@ export default function Navbar() {
       <div className="profile-anchor" ref={profileRef}>
         <button
           className={`profile-trigger ${profileOpen ? 'active' : ''}`}
-          onClick={() => { setProfileOpen((o) => !o); setNotifOpen(false); setNotifPanelOpen(false); }}
+          onClick={() => { setProfileOpen((o) => !o); setNotifPanelOpen(false); }}
           aria-label="Profile"
           title="Profile"
           style={user?.profileImageUrl ? { padding: 0, overflow: 'hidden' } : {}}

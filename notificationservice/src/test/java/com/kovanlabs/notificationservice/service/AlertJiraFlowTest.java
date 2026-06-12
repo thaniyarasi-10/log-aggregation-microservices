@@ -55,11 +55,17 @@ class AlertJiraFlowTest {
     private AlertNotificationService alertNotificationService;
 
     private JiraConfiguration mockConfig;
+<<<<<<< HEAD
     private UUID orgId;
 
     @BeforeEach
     void setUp() {
         orgId = UUID.randomUUID();
+=======
+
+    @BeforeEach
+    void setUp() {
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         templateBuilder = new AlertEmailTemplateBuilder();
         jiraStoryService = new JiraStoryService(
                 jiraStoryRepository,
@@ -110,7 +116,11 @@ class AlertJiraFlowTest {
     @Test
     void lowSeverityEmailSent_JiraNotAutoCreated() throws Exception {
         // Setup
+<<<<<<< HEAD
         when(alertRepository.findByOrganizationIdAndServiceIgnoreCaseAndTimestampAfter(eq(orgId), eq("payment-service"), any()))
+=======
+        when(alertRepository.findAllByServiceIgnoreCaseAndTimestampAfter(eq("payment-service"), any()))
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                 .thenReturn(new ArrayList<>());
         when(alertRepository.save(any(Alert.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -120,7 +130,11 @@ class AlertJiraFlowTest {
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
         AlertNotificationRequest request = new AlertNotificationRequest(
+<<<<<<< HEAD
                 "dev@test.com", "Dev User", "payment-service", "LOW", "NullPointerException triggered", 1, orgId.toString());
+=======
+                "dev@test.com", "Dev User", "payment-service", "LOW", "NullPointerException triggered", 1);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         // Act
         boolean sent = alertNotificationService.sendAlert(request);
@@ -137,14 +151,21 @@ class AlertJiraFlowTest {
         // Setup
         Alert existingAlert = new Alert();
         existingAlert.setId(UUID.randomUUID());
+<<<<<<< HEAD
         existingAlert.setOrganizationId(orgId);
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         existingAlert.setService("payment-service");
         existingAlert.setMessage("NullPointerException triggered");
         existingAlert.setCount(4); // Increments to 5, which escalates to HIGH
         existingAlert.setSeverity("LOW");
         existingAlert.setTimestamp(LocalDateTime.now().minusHours(1));
 
+<<<<<<< HEAD
         when(alertRepository.findByOrganizationIdAndServiceIgnoreCaseAndTimestampAfter(eq(orgId), eq("payment-service"), any()))
+=======
+        when(alertRepository.findAllByServiceIgnoreCaseAndTimestampAfter(eq("payment-service"), any()))
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                 .thenReturn(Collections.singletonList(existingAlert));
         when(alertRepository.save(any(Alert.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(alertRepository.findById(existingAlert.getId())).thenReturn(Optional.of(existingAlert));
@@ -174,7 +195,11 @@ class AlertJiraFlowTest {
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
         AlertNotificationRequest request = new AlertNotificationRequest(
+<<<<<<< HEAD
                 "dev@test.com", "Dev User", "payment-service", "LOW", "NullPointerException triggered", 1, orgId.toString());
+=======
+                "dev@test.com", "Dev User", "payment-service", "LOW", "NullPointerException triggered", 1);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         // Act
         boolean sent = alertNotificationService.sendAlert(request);
@@ -192,14 +217,21 @@ class AlertJiraFlowTest {
         // Setup
         Alert alert = new Alert();
         alert.setId(UUID.randomUUID());
+<<<<<<< HEAD
         alert.setOrganizationId(orgId);
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         alert.setService("payment-service");
         alert.setMessage("Database connection failed!"); // Critical keyword, count=1 -> LOW, but let's test count=2 -> HIGH
         alert.setCount(1);
         alert.setSeverity("LOW");
         alert.setTimestamp(LocalDateTime.now().minusHours(1));
 
+<<<<<<< HEAD
         when(alertRepository.findByOrganizationIdAndServiceIgnoreCaseAndTimestampAfter(eq(orgId), eq("payment-service"), any()))
+=======
+        when(alertRepository.findAllByServiceIgnoreCaseAndTimestampAfter(eq("payment-service"), any()))
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                 .thenReturn(Collections.singletonList(alert));
         when(alertRepository.save(any(Alert.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(alertRepository.findById(alert.getId())).thenReturn(Optional.of(alert));
@@ -219,7 +251,11 @@ class AlertJiraFlowTest {
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
         AlertNotificationRequest request = new AlertNotificationRequest(
+<<<<<<< HEAD
                 "dev@test.com", "Dev User", "payment-service", "LOW", "Database connection failed!", 1, orgId.toString());
+=======
+                "dev@test.com", "Dev User", "payment-service", "LOW", "Database connection failed!", 1);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         // Act
         boolean sent = alertNotificationService.sendAlert(request);
@@ -244,7 +280,10 @@ class AlertJiraFlowTest {
         UUID alertId = UUID.randomUUID();
         Alert alert = new Alert();
         alert.setId(alertId);
+<<<<<<< HEAD
         alert.setOrganizationId(orgId);
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         alert.setService("payment-service");
         alert.setMessage("Database timeout");
         alert.setCount(1);
@@ -290,14 +329,21 @@ class AlertJiraFlowTest {
         // Setup
         Alert alert = new Alert();
         alert.setId(UUID.randomUUID());
+<<<<<<< HEAD
         alert.setOrganizationId(orgId);
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         alert.setService("payment-service");
         alert.setMessage("Database connection failed!");
         alert.setCount(5);
         alert.setSeverity("HIGH");
         alert.setTimestamp(LocalDateTime.now());
 
+<<<<<<< HEAD
         when(alertRepository.findByOrganizationIdAndServiceIgnoreCaseAndTimestampAfter(eq(orgId), eq("payment-service"), any()))
+=======
+        when(alertRepository.findAllByServiceIgnoreCaseAndTimestampAfter(eq("payment-service"), any()))
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
                 .thenReturn(Collections.singletonList(alert));
         when(alertRepository.save(any(Alert.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(alertRepository.findById(alert.getId())).thenReturn(Optional.of(alert));
@@ -315,7 +361,11 @@ class AlertJiraFlowTest {
         when(mailSender.createMimeMessage()).thenReturn(new MimeMessage(Session.getInstance(new Properties())));
 
         AlertNotificationRequest request = new AlertNotificationRequest(
+<<<<<<< HEAD
                 "dev@test.com", "Dev User", "payment-service", "HIGH", "Database connection failed!", 1, orgId.toString());
+=======
+                "dev@test.com", "Dev User", "payment-service", "HIGH", "Database connection failed!", 1);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         // Act
         boolean sent = alertNotificationService.sendAlert(request);

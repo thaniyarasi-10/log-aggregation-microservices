@@ -98,6 +98,7 @@ public class AlertNotificationService {
         String rawMessage = request.message() != null ? request.message().trim() : "Error Triggered";
         int incomingCount = Math.max(1, request.count());
 
+<<<<<<< HEAD
         // 1. Perform signature lookup restricted by service within the last 24 hours
         LOGGER.info("Alert aggregation started for service: {}", serviceName);
         LocalDateTime limit = LocalDateTime.now().minusHours(24);
@@ -105,6 +106,27 @@ public class AlertNotificationService {
                 ? request.organizationId().trim()
                 : "00000000-0000-0000-0000-000000000000");
         List<Alert> recentAlerts = alertRepository.findByOrganizationIdAndServiceIgnoreCaseAndTimestampAfter(orgId, serviceName, limit);
+=======
+        // Loop prevention: ignore self-referential alerts from notification-service/logservice about notifications or Jira creation
+        String rawMessageLower = rawMessage.toLowerCase();
+        boolean isSelfService = "notification-service".equalsIgnoreCase(serviceName) || "logservice".equalsIgnoreCase(serviceName);
+        if (isSelfService && (
+            rawMessageLower.contains("failed to create jira story") ||
+            rawMessageLower.contains("jira story creation failed") ||
+            rawMessageLower.contains("failed to send alert trigger") ||
+            rawMessageLower.contains("failed to persist alert") ||
+            rawMessageLower.contains("graceful jira story creation failed") ||
+            rawMessageLower.contains("jira connection/operation failure")
+        )) {
+            LOGGER.warn("Dropping self-referential/loop-prone alert to prevent infinite loop: service={}, message={}", serviceName, rawMessage);
+            return true;
+        }
+
+        // 1. Perform signature lookup restricted by service within the last 24 hours
+        LOGGER.info("Alert aggregation started for service: {}", serviceName);
+        LocalDateTime limit = LocalDateTime.now().minusHours(24);
+        List<Alert> recentAlerts = alertRepository.findAllByServiceIgnoreCaseAndTimestampAfter(serviceName, limit);
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
         String incomingSignature = ErrorFingerprinter.getSignature(rawMessage);
 
         Alert alert = recentAlerts.stream()
@@ -118,7 +140,10 @@ public class AlertNotificationService {
         if (isNew) {
             alert = new Alert();
             alert.setId(UUID.randomUUID());
+<<<<<<< HEAD
             alert.setOrganizationId(orgId);
+=======
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
             alert.setService(serviceName);
             alert.setMessage(rawMessage);
             alert.setCount(incomingCount);
@@ -154,6 +179,7 @@ public class AlertNotificationService {
 
         // 4. Trigger Jira automation for HIGH severity alerts automatically
         if (isHigh) {
+<<<<<<< HEAD
             try {
                 LOGGER.info("Attempting to auto-create Jira story for alert ID: {}", alertId);
                 jiraStoryService.createJiraStoryForAlert(alertId.toString());
@@ -184,6 +210,52 @@ public class AlertNotificationService {
                 LOGGER.info("Legacy Jira story creation completed for alert ID: {}", alertId);
             } catch (Exception ex) {
                 LOGGER.error("Graceful legacy Jira Story creation failed: {}", ex.getMessage(), ex);
+=======
+            if (rawMessage.toLowerCase().contains("failed to create jira story") ||
+                rawMessage.toLowerCase().contains("jira story creation failed") ||
+                rawMessage.toLowerCase().contains("jira connection/operation failure") ||
+                (rawMessage.toLowerCase().contains("bad request") && rawMessage.toLowerCase().contains("jira"))) {
+                LOGGER.warn("Skipping automatic Jira story creation to prevent infinite loop for Jira-related alert: {}", rawMessage);
+            } else {
+                try {
+                    LOGGER.info("Attempting to auto-create Jira story for alert ID: {}", alertId);
+                    jiraStoryService.createJiraStoryForAlert(alertId.toString());
+                    jiraStory = jiraStoryService.getJiraStoryByAlertId(alertId.toString());
+                    LOGGER.info("Jira story auto-created successfully for alert ID: {}", alertId);
+                } catch (Exception ex) {
+                    LOGGER.warn("Graceful Jira Story creation failed: {}", ex.getMessage(), ex);
+                }
+            }
+        } else if (!isLow) {
+            // Keep original default behavior for other severities (e.g. CRITICAL/MEDIUM in old tests) to prevent breaking backwards compatibility
+            if (rawMessage.toLowerCase().contains("failed to create jira story") ||
+                rawMessage.toLowerCase().contains("jira story creation failed") ||
+                rawMessage.toLowerCase().contains("jira connection/operation failure") ||
+                (rawMessage.toLowerCase().contains("bad request") && rawMessage.toLowerCase().contains("jira"))) {
+                LOGGER.warn("Skipping legacy Jira story creation to prevent infinite loop for Jira-related alert: {}", rawMessage);
+            } else {
+                try {
+                    LOGGER.info("Triggering legacy Jira story creation for alert ID: {}", alertId);
+                    com.kovanlabs.notificationservice.dto.AlertRequest jiraRequest = new com.kovanlabs.notificationservice.dto.AlertRequest(
+                            alertId.toString(),
+                            rawMessage,
+                            serviceName,
+                            request.severity() != null ? request.severity() : "MEDIUM",
+                            java.time.Instant.now().toString(),
+                            rawMessage,
+                            "N/A",
+                            "N/A",
+                            "N/A",
+                            alert.getCount(),
+                            rawMessage,
+                            "N/A"
+                    );
+                    jiraStoryService.triggerJiraStoryCreation(jiraRequest);
+                    LOGGER.info("Legacy Jira story creation completed for alert ID: {}", alertId);
+                } catch (Exception ex) {
+                    LOGGER.warn("Graceful legacy Jira Story creation failed: {}", ex.getMessage(), ex);
+                }
+>>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
             }
         }
 
