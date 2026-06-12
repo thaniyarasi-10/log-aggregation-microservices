@@ -66,7 +66,7 @@ public class JiraClient {
 
         LOGGER.info("Sending issue creation request to Jira v3 API: {}/rest/api/3/issue", cleanBaseUrl);
 
-        RestClient restClient = RestClient.builder().baseUrl(cleanBaseUrl).build();
+        RestClient restClient = getRestClient(cleanBaseUrl);
 
         return restClient.post()
                 .uri("/rest/api/3/issue")
@@ -89,7 +89,7 @@ public class JiraClient {
 
         LOGGER.info("Testing connection to Jira project '{}' at: {}", projectKey, cleanBaseUrl);
 
-        RestClient restClient = RestClient.builder().baseUrl(cleanBaseUrl).build();
+        RestClient restClient = getRestClient(cleanBaseUrl);
 
         try {
             // Attempt to retrieve project details to validate credentials and project existence
@@ -123,7 +123,7 @@ public class JiraClient {
         String base64Auth = Base64.getEncoder().encodeToString(authStr.getBytes(StandardCharsets.UTF_8));
         String authHeader = "Basic " + base64Auth;
 
-        RestClient restClient = RestClient.builder().baseUrl(cleanBaseUrl).build();
+        RestClient restClient = getRestClient(cleanBaseUrl);
 
         try {
             ParameterizedTypeReference<List<Map<String, Object>>> typeRef = new ParameterizedTypeReference<>() {};
@@ -186,6 +186,17 @@ public class JiraClient {
                 "version", 1,
                 "content", contentList
         );
+    }
+
+    private RestClient getRestClient(String cleanBaseUrl) {
+        org.springframework.http.client.SimpleClientHttpRequestFactory requestFactory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(java.time.Duration.ofMillis(1000));
+        requestFactory.setReadTimeout(java.time.Duration.ofMillis(3000));
+
+        return RestClient.builder()
+                .baseUrl(cleanBaseUrl)
+                .requestFactory(requestFactory)
+                .build();
     }
 
     public record JiraCreateIssueResponse(

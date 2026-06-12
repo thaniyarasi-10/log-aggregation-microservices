@@ -229,6 +229,11 @@ function getSourceBadgeClass(source?: string): string {
   return `source-${source.toLowerCase().replace('_', '-')}`;
 }
 
+interface Props {
+  log: LogEvent | null;
+  onClose: () => void;
+}
+
 export default function LogDrawer({ log, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('overview');
   const [jsonCopied, setJsonCopied] = useState(false);
@@ -519,10 +524,18 @@ export default function LogDrawer({ log, onClose }: Props) {
                     {log.confidence !== undefined && log.confidence !== null && log.confidence > 0 && (
                       <div className="ld-suggestion-block">
                         <span className="ld-suggestion-subtitle">Confidence Score</span>
-                        <div>
-                          <span className={`ld-confidence-badge confidence-${getConfidenceClass(log.confidence)}`}>
-                            {log.confidence}% — {getConfidenceLabel(log.confidence)}
-                          </span>
+                        <div className="ld-confidence-container">
+                          <div>
+                            <span className={`ld-confidence-badge confidence-${getConfidenceClass(log.confidence)}`}>
+                              {log.confidence}% — {getConfidenceLabel(log.confidence)}
+                            </span>
+                          </div>
+                          <div className="ld-confidence-track">
+                            <div
+                              className={`ld-confidence-bar ${getConfidenceClass(log.confidence)}`}
+                              style={{ width: `${log.confidence}%` }}
+                            />
+                          </div>
                         </div>
                       </div>
                     )}

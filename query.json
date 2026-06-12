@@ -1,0 +1,10 @@
+{
+  "size": 5,
+  "sort": [
+    {
+      "@timestamp": {
+        "order": "desc"
+      }
+    }
+  ]
+}

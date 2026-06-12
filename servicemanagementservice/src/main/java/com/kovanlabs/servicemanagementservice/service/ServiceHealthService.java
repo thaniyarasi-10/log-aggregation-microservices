@@ -45,7 +45,7 @@ public class ServiceHealthService {
     ) {}
 
     public List<ServiceHealthView> getServicesHealth() {
-        LOGGER.info("Calculating service health based on registered services and log metrics");
+        //LOGGER.info("Calculating service health based on registered services and log metrics");
 
         // 1. Fetch registered active services from database
         List<AppService> registeredServices = appServiceRepository.findByActiveTrueOrderByNameAsc();
@@ -58,7 +58,7 @@ public class ServiceHealthService {
         // 2. Fetch log metrics from logservice
         List<ServiceLogMetrics> logMetrics = new ArrayList<>();
         try {
-            LOGGER.info("Calling Log Service to fetch service health aggregation for window: {} minutes", windowMinutes);
+           // LOGGER.info("Calling Log Service to fetch service health aggregation for window: {} minutes", windowMinutes);
             List<ServiceLogMetrics> response = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/api/logs/service-health")

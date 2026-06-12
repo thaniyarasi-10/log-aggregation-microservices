@@ -76,9 +76,17 @@ public class NotificationController {
 
     @PostMapping("/alerts")
     public ResponseEntity<Map<String, Object>> sendAlert(@RequestBody AlertNotificationRequest request) {
-        boolean sent = alertNotificationService.sendAlert(request);
+        if (request != null) {
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    alertNotificationService.sendAlert(request);
+                } catch (Exception ex) {
+                    LOGGER.error("Failed to process alert asynchronously: {}", ex.getMessage(), ex);
+                }
+            });
+        }
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("status", sent ? "accepted" : "skipped");
+        response.put("status", "accepted");
         response.put("recipientEmail", request != null ? request.recipientEmail() : null);
         return ResponseEntity.ok(response);
     }

@@ -307,8 +307,7 @@ export function FilterToolbar({ filters, services, onChange }: FilterToolbarProp
       {/* ── Time Preset Selector ── */}
       <div>
         <select
-          className="form-control"
-          style={{ height: '31px', padding: '0 8px' }}
+          className="form-control obs-time-preset-select"
           value={filters.timeRange}
           onChange={handleTimeRangeChange}
         >

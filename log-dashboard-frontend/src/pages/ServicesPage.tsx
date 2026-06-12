@@ -520,10 +520,10 @@ export default function ServicesPage() {
                   />
                 ) : (
                   <div className="table-scroll-area">
-                    <table className="log-table" style={{ width: '100%' }}>
+                    <table className="log-table services-health-table" style={{ width: '100%' }}>
                       <thead>
                         <tr>
-                          <th style={{ width: '120px' }}>Status</th>
+                          <th>Status</th>
                           <th>Service Name</th>
                           <th>Error Count (24h)</th>
                           <th>Avg Response Time</th>
@@ -590,13 +590,13 @@ export default function ServicesPage() {
               ) : (
                 <div className="obs-table-workspace-panel">
                   <div className="table-scroll-area">
-                    <table className="log-table" style={{ width: '100%' }}>
+                    <table className="log-table services-table" style={{ width: '100%' }}>
                       <thead>
                         <tr>
-                          <th>Service Name</th>
-                          <th>Description</th>
-                          <th>Owners Assignment (Select Primary)</th>
-                          {isAdmin && <th style={{ width: '140px', textAlign: 'right' }}>Actions</th>}
+                          <th className="services-cell-name">Service Name</th>
+                          <th className="services-cell-description">Description</th>
+                          <th className="services-cell-status">Owners Assignment (Select Primary)</th>
+                          {isAdmin && <th className="services-cell-actions" style={{ textAlign: 'right' }}>Actions</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -604,11 +604,11 @@ export default function ServicesPage() {
                           const firstLetter = service.name ? service.name.charAt(0) : 'S';
                           return (
                             <tr key={service.id || service.name}>
-                              <td style={{ fontWeight: 600, verticalAlign: 'top', fontFamily: 'var(--font-mono)' }}>{service.name}</td>
-                              <td style={{ verticalAlign: 'top', color: 'var(--text-secondary)' }}>
+                              <td className="services-cell-name" style={{ fontWeight: 600, verticalAlign: 'top', fontFamily: 'var(--font-mono)' }}>{service.name}</td>
+                              <td className="services-cell-description" style={{ verticalAlign: 'top', color: 'var(--text-secondary)' }}>
                                 {service.description || 'No description provided.'}
                               </td>
-                              <td>
+                              <td className="services-cell-status" style={{ verticalAlign: 'top' }}>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                                   {service.owners && service.owners.map((owner) => (
                                     <label
@@ -650,7 +650,7 @@ export default function ServicesPage() {
                                 </div>
                               </td>
                               {isAdmin && (
-                                <td style={{ textAlign: 'right', verticalAlign: 'top' }}>
+                                <td className="services-cell-actions" style={{ textAlign: 'right', verticalAlign: 'top' }}>
                                   <div style={{ display: 'inline-flex', gap: '6px' }}>
                                     <button
                                       className="btn"
@@ -703,13 +703,13 @@ export default function ServicesPage() {
                 ) : (
                   <div className="obs-table-workspace-panel">
                     <div className="table-scroll-area">
-                      <table className="log-table" style={{ width: '100%' }}>
+                      <table className={`log-table ${isAdmin ? 'requests-pending-table is-admin' : 'requests-table'}`} style={{ width: '100%' }}>
                         <thead>
                           <tr>
                             <th>Service</th>
                             <th>Requested By</th>
                             <th>Reason / Description</th>
-                            {isAdmin && <th style={{ width: '180px', textAlign: 'right' }}>Actions</th>}
+                            {isAdmin && <th style={{ textAlign: 'right' }}>Actions</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -763,7 +763,7 @@ export default function ServicesPage() {
                 ) : (
                   <div className="obs-table-workspace-panel">
                     <div className="table-scroll-area">
-                      <table className="log-table" style={{ width: '100%' }}>
+                      <table className="log-table requests-table" style={{ width: '100%' }}>
                         <thead>
                           <tr>
                             <th>Service</th>

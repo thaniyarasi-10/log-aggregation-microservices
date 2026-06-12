@@ -24,12 +24,13 @@ class LogProcessingServiceTest {
     @Mock private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
     @Mock private NotificationServiceClient notificationServiceClient;
     @Mock private ErrorSuggestionService errorSuggestionService;
+    @Mock private LogProcessingMetricsTracker metricsTracker;
 
     @InjectMocks private LogProcessingService service;
 
     @BeforeEach
     void setUp() {
-        service = new LogProcessingService(elasticSearchService, mongoLogEventRepository, serviceApprovalClient, redisLogService, sessionTracker, messagingTemplate, notificationServiceClient, errorSuggestionService);
+        service = new LogProcessingService(elasticSearchService, mongoLogEventRepository, serviceApprovalClient, redisLogService, sessionTracker, messagingTemplate, notificationServiceClient, errorSuggestionService, metricsTracker);
         org.mockito.Mockito.lenient().when(serviceApprovalClient.isApproved(any())).thenReturn(true);
     }
 
@@ -65,6 +66,7 @@ class LogProcessingServiceTest {
 
         verify(mongoLogEventRepository, never()).save(any());
         verify(elasticSearchService, never()).save(any());
+        verify(metricsTracker).incrementUnapprovedDiscarded(1);
     }
 
     @Test
@@ -73,6 +75,8 @@ class LogProcessingServiceTest {
         event.setService("payment-service");
         event.setLevel("ERROR");
         event.setMessage("Database connection failed");
+
+        org.mockito.Mockito.when(redisLogService.acquireErrorAnalysisLock(any(), any())).thenReturn(true);
 
         service.processLogEvent(event);
 
@@ -86,8 +90,70 @@ class LogProcessingServiceTest {
         event.setLevel("ERROR");
         event.setMessage("NullPointerException occurred");
 
+        org.mockito.Mockito.when(redisLogService.acquireErrorAnalysisLock(any(), any())).thenReturn(true);
+
         service.processLogEvent(event);
 
         verify(errorSuggestionService).attachSuggestion(event);
+    }
+
+    @Test
+    void processLogEvent_duplicateLog_skipped() {
+        LogEvent event = new LogEvent();
+        event.setService("payment-service");
+        event.setLevel("INFO");
+        event.setMessage("Already seen");
+
+        org.mockito.Mockito.when(redisLogService.isDuplicateAndSet(any(), any(Long.class))).thenReturn(true);
+
+        service.processLogEvent(event);
+
+        verify(elasticSearchService, never()).save(event);
+        verify(metricsTracker).incrementDuplicatesSkipped(1);
+    }
+
+    @Test
+    void processLogEvent_throttledErrorLog_skipsAiAnalysis() {
+        LogEvent event = new LogEvent();
+        event.setService("payment-service");
+        event.setLevel("ERROR");
+        event.setMessage("Repeated error");
+
+        org.mockito.Mockito.when(redisLogService.acquireErrorAnalysisLock(any(), any())).thenReturn(false);
+
+        service.processLogEvent(event);
+
+        verify(errorSuggestionService, never()).attachSuggestion(event);
+        verify(elasticSearchService).save(event); // still persisted
+    }
+
+    @Test
+    void processBatch_validJsons_savesInBulk() {
+        java.util.List<String> payloads = java.util.List.of(
+            "{\"service\":\"payment-service\",\"level\":\"INFO\",\"message\":\"msg1\"}",
+            "{\"service\":\"payment-service\",\"level\":\"ERROR\",\"message\":\"msg2\"}"
+        );
+
+        org.mockito.Mockito.when(redisLogService.acquireErrorAnalysisLock(any(), any())).thenReturn(true);
+
+        service.processBatch(payloads);
+
+        verify(mongoLogEventRepository).saveAll(any(java.util.List.class));
+        verify(elasticSearchService).saveAll(any(java.util.List.class));
+        verify(metricsTracker).incrementTotalLogs(2);
+    }
+
+    @Test
+    void processLogEvent_loopProneSelfReferentialErrorLog_skipsAlertTrigger() {
+        LogEvent event = new LogEvent();
+        event.setService("notification-service");
+        event.setLevel("ERROR");
+        event.setMessage("Failed to create Jira Story for alertId 123");
+
+        org.mockito.Mockito.when(redisLogService.acquireErrorAnalysisLock(any(), any())).thenReturn(true);
+
+        service.processLogEvent(event);
+
+        verify(notificationServiceClient, never()).sendAlert(any(), any(), any());
     }
 }

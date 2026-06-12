@@ -19,8 +19,8 @@ public class NotificationServiceClient {
 
     public NotificationServiceClient(
             @Value("${services.notification.base-url:http://localhost:8083}") String baseUrl,
-            @Value("${services.notification.connect-timeout-ms:500}") long connectTimeoutMs,
-            @Value("${services.notification.read-timeout-ms:1000}") long readTimeoutMs) {
+            @Value("${services.notification.connect-timeout-ms:1000}") long connectTimeoutMs,
+            @Value("${services.notification.read-timeout-ms:10000}") long readTimeoutMs) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofMillis(connectTimeoutMs));
         requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
@@ -36,24 +36,25 @@ public class NotificationServiceClient {
             return;
         }
 
-        try {
-//            LOGGER.info("Sending alert trigger to notification-service for service: {}, message: {}", service, message);
-            AlertNotificationRequest request = new AlertNotificationRequest(
-                    null,
-                    null,
-                    service,
-                    level != null ? level : "ERROR",
-                    message,
-                    1
-            );
-            restClient.post()
-                    .uri("/api/notifications/alerts")
-                    .body(request)
-                    .retrieve()
-                    .toBodilessEntity();
-//            LOGGER.info("Alert trigger successfully dispatched to notification-service");
-        } catch (Exception ex) {
-            LOGGER.error("Failed to send alert trigger to notification-service: {}", ex.getMessage(), ex);
-        }
+        AlertNotificationRequest request = new AlertNotificationRequest(
+                null,
+                null,
+                service,
+                level != null ? level : "ERROR",
+                message,
+                1
+        );
+
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                restClient.post()
+                        .uri("/api/notifications/alerts")
+                        .body(request)
+                        .retrieve()
+                        .toBodilessEntity();
+            } catch (Exception ex) {
+                LOGGER.warn("Failed to send alert trigger to notification-service: {}", ex.getMessage(), ex);
+            }
+        });
     }
 }

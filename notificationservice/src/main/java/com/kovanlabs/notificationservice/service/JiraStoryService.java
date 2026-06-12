@@ -57,7 +57,7 @@ public class JiraStoryService {
 
     public JiraStoryResponse triggerJiraStoryCreation(AlertRequest request) {
         if (request == null || request.alertId() == null || request.alertId().isBlank()) {
-            LOGGER.error("Invalid AlertRequest: alertId is required");
+            LOGGER.warn("Invalid AlertRequest: alertId is required");
             return new JiraStoryResponse("FAILED", "Invalid request: alertId is required", null, null);
         }
 
@@ -75,7 +75,7 @@ public class JiraStoryService {
         Optional<JiraConfiguration> configOpt = jiraConfigurationRepository.findFirstByActiveTrue();
         if (configOpt.isEmpty()) {
             String errorMsg = "No active Jira configuration found. Cannot automate story creation.";
-            LOGGER.error(errorMsg);
+            LOGGER.warn(errorMsg);
             return new JiraStoryResponse("FAILED", errorMsg, null, null);
         }
         JiraConfiguration config = configOpt.get();
@@ -98,7 +98,7 @@ public class JiraStoryService {
         List<Object[]> primaryOwners = userJiraMappingRepository.findPrimaryOwnersByServiceNameIgnoreCase(serviceName);
         if (primaryOwners.isEmpty()) {
             String errorMsg = "No primary owner configured for service: " + serviceName;
-            LOGGER.error("Configuration Error: {}", errorMsg);
+            LOGGER.warn("Configuration Error: {}", errorMsg);
 
             story.setStatus("FAILED");
             jiraStoryRepository.save(story);
@@ -108,7 +108,7 @@ public class JiraStoryService {
 
         if (primaryOwners.size() > 1) {
             String errorMsg = "Multiple primary owners configured for service: " + serviceName;
-            LOGGER.error("Configuration Error: {}", errorMsg);
+            LOGGER.warn("Configuration Error: {}", errorMsg);
 
             story.setStatus("FAILED");
             jiraStoryRepository.save(story);
@@ -123,7 +123,7 @@ public class JiraStoryService {
         Optional<UserJiraMapping> mappingOpt = userJiraMappingRepository.findByUserId(ownerUserId);
         if (mappingOpt.isEmpty() || !mappingOpt.get().isActive()) {
             String errorMsg = "No active Jira mapping found for primary owner: " + ownerUsername;
-            LOGGER.error("Configuration Error: {}", errorMsg);
+            LOGGER.warn("Configuration Error: {}", errorMsg);
 
             story.setStatus("FAILED");
             jiraStoryRepository.save(story);
@@ -171,7 +171,7 @@ public class JiraStoryService {
             return new JiraStoryResponse("CREATED", "Jira Story created successfully", jiraResponse.key(), issueUrl);
 
         } catch (Exception ex) {
-            LOGGER.error("Failed to create Jira Story for alertId {}: {}", alertId, ex.getMessage(), ex);
+            LOGGER.warn("Failed to create Jira Story for alertId {}: {}", alertId, ex.getMessage(), ex);
 
             // Store failed creation attempt
             story.setStatus("FAILED");
@@ -214,7 +214,7 @@ public class JiraStoryService {
         Optional<JiraConfiguration> configOpt = jiraConfigurationRepository.findFirstByActiveTrue();
         if (configOpt.isEmpty()) {
             String errorMsg = "No active Jira configuration found. Cannot automate story creation.";
-            LOGGER.error(errorMsg);
+            LOGGER.warn(errorMsg);
             return new JiraStoryResponse("FAILED", errorMsg, null, null);
         }
         JiraConfiguration config = configOpt.get();
@@ -309,7 +309,7 @@ public class JiraStoryService {
             return new JiraStoryResponse("CREATED", "Jira Story created successfully", jiraResponse.key(), issueUrl);
 
         } catch (Exception ex) {
-            LOGGER.error("Failed to create Jira Story for alertId {}: {}", alertIdString, ex.getMessage(), ex);
+            LOGGER.warn("Failed to create Jira Story for alertId {}: {}", alertIdString, ex.getMessage(), ex);
 
             // Store failed creation attempt
             story.setStatus("FAILED");

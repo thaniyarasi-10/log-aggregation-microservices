@@ -83,8 +83,8 @@ export class LogTable {
             <td>
                 <div class="message-cell">${this.getHighlightedMessage(log.message)}</div>
             </td>
-            <td>${log.statusCode || '-'}</td>
-            <td>${log.responseTime ? log.responseTime + 'ms' : '-'}</td>
+            <td>${log.statusCode !== undefined && log.statusCode !== null ? log.statusCode : '-'}</td>
+            <td>${log.responseTime !== undefined && log.responseTime !== null ? log.responseTime + 'ms' : '-'}</td>
         `;
 
         // Expandable row details

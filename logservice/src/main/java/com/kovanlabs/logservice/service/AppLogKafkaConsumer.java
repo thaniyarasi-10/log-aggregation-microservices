@@ -19,8 +19,7 @@ public class AppLogKafkaConsumer {
             groupId = "logservice-group",
             concurrency = "${spring.kafka.listener.concurrency:4}"
     )
-    public void consume(String payload) {
-        logProcessingService.process(payload);
-//        LOGGER.info("KAFKA RECEIVED -> {}", payload);
+    public void consume(java.util.List<String> payloads) {
+        logProcessingService.processBatch(payloads);
     }
 }

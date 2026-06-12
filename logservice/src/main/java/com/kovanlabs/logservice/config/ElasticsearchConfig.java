@@ -47,45 +47,80 @@ public class ElasticsearchConfig {
         return new ElasticsearchClient(transport);
     }
 
-    @Bean
-    public ApplicationRunner indexTemplateInitializer(ElasticsearchClient client) {
-        return args -> {
-            try {
-                LOGGER.info("Initializing Elasticsearch index template 'app-logs-template' for patterns 'app-logs-*'...");
-                client.indices().putIndexTemplate(pit -> pit
-                        .name("app-logs-template")
-                        .indexPatterns(List.of("app-logs-*"))
-                        .template(t -> t
-                                .settings(s -> s
-                                        .analysis(a -> a
-                                                .normalizer("lowercase_normalizer", n -> n
-                                                        .custom(c -> c
-                                                                .filter(List.of("lowercase"))
-                                                        )
+    private void createIlmPolicy(ElasticsearchClient client, String policyName, String minAge) {
+        try {
+            LOGGER.info("Checking/Creating Elasticsearch ILM policy '{}' with retention of {}...", policyName, minAge);
+            java.util.Map<String, Object> actionsMap = new java.util.HashMap<>();
+            actionsMap.put("delete", new java.util.HashMap<String, Object>());
+
+            client.ilm().putLifecycle(p -> p
+                    .name(policyName)
+                    .policy(pol -> pol
+                            .phases(ph -> ph
+                                    .delete(del -> del
+                                            .minAge(co.elastic.clients.elasticsearch._types.Time.of(t -> t.time(minAge)))
+                                            .actions(co.elastic.clients.json.JsonData.of(actionsMap))
+                                    )
+                            )
+                    )
+            );
+            LOGGER.info("Elasticsearch ILM policy '{}' created/updated successfully.", policyName);
+        } catch (Exception e) {
+            LOGGER.warn("Failed to create ILM policy '{}'. This is normal if ILM is disabled or not supported by the cluster. Error: {}", policyName, e.getMessage());
+        }
+    }
+
+    private void putTemplate(ElasticsearchClient client, String templateName, String pattern, String lifecyclePolicy) throws Exception {
+        LOGGER.info("Initializing Elasticsearch index template '{}' for patterns '{}'...", templateName, pattern);
+        client.indices().putIndexTemplate(pit -> pit
+                .name(templateName)
+                .indexPatterns(List.of(pattern))
+                .priority(10)
+                .template(t -> t
+                        .settings(s -> s
+                                .analysis(a -> a
+                                        .normalizer("lowercase_normalizer", n -> n
+                                                .custom(c -> c
+                                                        .filter(List.of("lowercase"))
                                                 )
                                         )
                                 )
-                                .mappings(m -> m
-                                        .properties("@timestamp", pr -> pr.date(d -> d))
-                                        .properties("service", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
-                                        .properties("level", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
-                                        .properties("environment", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
-                                        .properties("project", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
-                                        .properties("traceId", pr -> pr.keyword(k -> k))
-                                        .properties("message", pr -> pr.text(tx -> tx))
-                                        .properties("responseTime", pr -> pr.double_(db -> db))
-                                        .properties("errorType", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
-                                        .properties("possibleCauses", pr -> pr.keyword(k -> k))
-                                        .properties("suggestedFixes", pr -> pr.keyword(k -> k))
-                                        .properties("severity", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
-                                        .properties("suggestionGeneratedAt", pr -> pr.date(d -> d))
-                                        .properties("rootCause", pr -> pr.text(tx -> tx.fields("keyword", f -> f.keyword(k -> k))))
-                                        .properties("confidence", pr -> pr.integer(i -> i))
-                                        .properties("suggestionSource", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
-                                )
+                                .lifecycle(l -> l.name(lifecyclePolicy))
                         )
-                );
-                LOGGER.info("Elasticsearch index template 'app-logs-template' initialized successfully.");
+                        .mappings(m -> m
+                                .properties("@timestamp", pr -> pr.date(d -> d))
+                                .properties("service", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
+                                .properties("level", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
+                                .properties("environment", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
+                                .properties("project", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
+                                .properties("traceId", pr -> pr.keyword(k -> k))
+                                .properties("message", pr -> pr.text(tx -> tx))
+                                .properties("responseTime", pr -> pr.double_(db -> db))
+                                .properties("errorType", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
+                                .properties("possibleCauses", pr -> pr.keyword(k -> k))
+                                .properties("suggestedFixes", pr -> pr.keyword(k -> k))
+                                .properties("severity", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
+                                .properties("suggestionGeneratedAt", pr -> pr.date(d -> d))
+                                .properties("rootCause", pr -> pr.text(tx -> tx.fields("keyword", f -> f.keyword(k -> k))))
+                                .properties("confidence", pr -> pr.integer(i -> i))
+                                .properties("suggestionSource", pr -> pr.keyword(k -> k.normalizer("lowercase_normalizer")))
+                        )
+                )
+        );
+        LOGGER.info("Elasticsearch index template '{}' initialized successfully.", templateName);
+    }
+
+    @Bean
+    public org.springframework.boot.ApplicationRunner indexTemplateInitializer(ElasticsearchClient client) {
+        return args -> {
+            try {
+                // Initialize ILM Policies
+                createIlmPolicy(client, "app-logs-errors-policy", "90d");
+                createIlmPolicy(client, "app-logs-general-policy", "14d");
+
+                // Initialize Templates
+                putTemplate(client, "app-logs-errors-template", "app-logs-errors-*", "app-logs-errors-policy");
+                putTemplate(client, "app-logs-general-template", "app-logs-general-*", "app-logs-general-policy");
 
                 LOGGER.info("Checking/Initializing Elasticsearch index 'error-knowledge-base'...");
                 boolean indexExists = client.indices().exists(e -> e.index("error-knowledge-base")).value();

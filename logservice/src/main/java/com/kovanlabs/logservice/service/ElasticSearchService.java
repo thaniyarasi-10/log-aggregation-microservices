@@ -37,5 +37,17 @@ public class ElasticSearchService {
         }
     }
 
+    public boolean saveAll(java.util.List<LogEvent> logEvents) {
+        if (logEvents == null || logEvents.isEmpty()) {
+            return true;
+        }
+        try {
+            return elasticRepository.saveAll(logEvents);
+        } catch (Exception e) {
+            LOGGER.error("Failed to bulk save logs to Elasticsearch: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
 
 }

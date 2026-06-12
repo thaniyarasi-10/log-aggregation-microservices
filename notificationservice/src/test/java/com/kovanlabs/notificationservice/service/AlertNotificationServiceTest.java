@@ -132,6 +132,16 @@ class AlertNotificationServiceTest {
         verify(alertRepository).save(any(Alert.class));
     }
 
+    @Test
+    void sendAlert_selfReferentialAlert_droppedToPreventLoop() {
+        boolean sent = service.sendAlert(new AlertNotificationRequest(
+                "dev@test.com", "Dev User", "notification-service", "ERROR", "Failed to create Jira Story for alertId abc", 1));
+
+        assertThat(sent).isTrue();
+        verify(alertRepository, never()).save(any(Alert.class));
+        verify(mailSenderProvider, never()).getIfAvailable();
+    }
+
     private NotificationPreference preference(boolean enabled) {
         NotificationPreference preference = new NotificationPreference();
         preference.setEmailEnabled(enabled);

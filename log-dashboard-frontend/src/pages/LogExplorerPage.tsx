@@ -217,7 +217,7 @@ export default function LogExplorerPage() {
   };
 
   return (
-    <main className="page-container" style={{ minHeight: 'calc(100vh - 44px)', display: 'flex', flexDirection: 'column' }}>
+    <main className="page-container" style={{ height: 'calc(100vh - 44px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
 
       <FilterToolbar
@@ -245,9 +245,9 @@ export default function LogExplorerPage() {
           icon="📂"
         />
       ) : (
-        <div className="obs-table-workspace-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div className="obs-table-workspace-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div className="table-scroll-area" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-            <table className="log-explorer-table" style={{ width: '100%' }}>
+            <table className="log-table explorer-table" style={{ width: '100%' }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--table-header-bg)' }}>
                 <tr>
                   <th className="sortable-header col-timestamp" onClick={() => handleSort('timestamp')} style={{ cursor: 'pointer' }}>
@@ -297,7 +297,7 @@ export default function LogExplorerPage() {
                       </td>
                       <td className="col-status" style={{ fontWeight: 500 }}>{log.statusCode ?? '-'}</td>
                       <td className="col-latency">
-                        {log.responseTime ? `${Math.round(log.responseTime)}ms` : '-'}
+                        {log.responseTime !== undefined && log.responseTime !== null ? `${Math.round(log.responseTime)}ms` : '-'}
                       </td>
                     </tr>
                   );
@@ -317,7 +317,7 @@ export default function LogExplorerPage() {
               padding: '8px 16px',
             }}
           >
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', paddingLeft: '44px' }}>
               Showing <strong>{Math.min(totalLogsCount, (currentPage - 1) * pageSize + 1)}</strong> to{' '}
               <strong>{Math.min(totalLogsCount, currentPage * pageSize)}</strong> of{' '}
               <strong>{totalLogsCount}</strong> logs
