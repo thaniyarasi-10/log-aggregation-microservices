@@ -1,3 +1,5 @@
+# Spring Boot config
+**/src/main/resources/application.yml
 **/src/main/resources/application.yaml
 
 # Frontend
