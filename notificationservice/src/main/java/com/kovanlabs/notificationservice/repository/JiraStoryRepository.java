@@ -12,4 +12,7 @@ import com.kovanlabs.notificationservice.model.JiraStory;
 public interface JiraStoryRepository extends JpaRepository<JiraStory, UUID> {
     List<JiraStory> findByAlertId(String alertId);
     boolean existsByAlertIdAndStatusIgnoreCase(String alertId, String status);
+    List<JiraStory> findByServiceNameAndStatusIgnoreCase(String serviceName, String status);
+    boolean existsBySignatureHashAndStatusIgnoreCase(String signatureHash, String status);
+    java.util.Optional<JiraStory> findFirstBySignatureHashAndStatusIgnoreCase(String signatureHash, String status);
 }

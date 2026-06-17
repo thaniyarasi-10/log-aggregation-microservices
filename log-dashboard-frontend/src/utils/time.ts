@@ -24,7 +24,7 @@ export function buildLogQueryParams(filters: LogFilters): LogQueryParams {
     to,
     timePreset: filters.timeRange || '15m',
     page: 0,
-    size: 500
+    size: 2000
   };
 
   // Multi-select services: send as comma-separated string when any are selected

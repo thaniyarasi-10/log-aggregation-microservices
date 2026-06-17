@@ -54,19 +54,13 @@ class JiraStoryTemplateBuilderTest {
         );
 
         String description = builder.buildDescription(alert);
-        assertThat(description)
-                .contains("Alert Name:\nError Threshold Breached")
-                .contains("Service:\npayment-service")
-                .contains("Priority:\nCRITICAL")
-                .contains("Triggered At:\n2026-05-29T12:00:00Z")
-                .contains("Alert Rule:\nHTTP 5xx > 1%")
-                .contains("Observed Value:\n1.5%")
-                .contains("Threshold:\n1.0%")
-                .contains("Time Window:\n5m")
-                .contains("Error Count:\n10")
-                .contains("Top Errors:\nNullPointerException")
-                .contains("Alert Id:\nalert-123")
-                .contains("Alert Link:\nhttp://las/alerts/123");
+        assertThat(description).isEqualTo(
+                "The payment-service reported a CRITICAL severity error threshold breached. " +
+                "The detected error details indicate: NullPointerException. " +
+                "This issue may impact application availability and request processing. " +
+                "A NullPointerException was detected. It is recommended to check the stack trace, " +
+                "verify null checks in the codebase, and inspect recent code changes around the service."
+        );
     }
 
     @Test
@@ -87,10 +81,35 @@ class JiraStoryTemplateBuilderTest {
         );
 
         String description = builder.buildDescription(alert);
-        assertThat(description)
-                .contains("Alert Name:\nN/A")
-                .contains("Priority:\nN/A")
-                .contains("Error Count:\nN/A")
-                .contains("Alert Link:\nN/A");
+        assertThat(description).isEqualTo(
+                "The payment-service reported a UNKNOWN severity incident. " +
+                "This issue is currently classified as low severity but should be monitored. " +
+                "Immediate investigation of service logs, recent deployment history, and system resource metrics is recommended."
+        );
+    }
+
+    @Test
+    void buildDescription_withAiSuggestion_includesAiSuggestion() {
+        AlertRequest alert = new AlertRequest(
+                "alert-123",
+                "Database Connection Failed",
+                "gateway-service",
+                "HIGH",
+                "2026-06-08T13:22:55",
+                "AI Suggestion: Increase connection pool size and check db server health.",
+                "N/A",
+                "N/A",
+                "N/A",
+                1,
+                "Database Connection Failed",
+                "N/A"
+        );
+
+        String description = builder.buildDescription(alert);
+        assertThat(description).isEqualTo(
+                "The gateway-service reported a HIGH severity database connection failure. " +
+                "This issue may impact application availability and request processing. " +
+                "Increase connection pool size and check db server health."
+        );
     }
 }

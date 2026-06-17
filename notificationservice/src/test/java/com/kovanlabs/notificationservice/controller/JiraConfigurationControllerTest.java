@@ -34,6 +34,7 @@ import com.kovanlabs.notificationservice.dto.JiraUserDto;
 import com.kovanlabs.notificationservice.model.JiraConfiguration;
 import com.kovanlabs.notificationservice.repository.JiraConfigurationRepository;
 import com.kovanlabs.notificationservice.service.JiraClient;
+import com.kovanlabs.notificationservice.service.JiraFailureCache;
 
 @ExtendWith(MockitoExtension.class)
 class JiraConfigurationControllerTest {
@@ -43,6 +44,9 @@ class JiraConfigurationControllerTest {
 
     @Mock
     private JiraClient jiraClient;
+
+    @Mock
+    private JiraFailureCache failureCache;
 
     @InjectMocks
     private JiraConfigurationController controller;

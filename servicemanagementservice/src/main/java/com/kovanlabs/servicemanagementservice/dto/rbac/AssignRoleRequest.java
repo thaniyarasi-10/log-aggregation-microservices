@@ -1,4 +1,6 @@
 package com.kovanlabs.servicemanagementservice.dto.rbac;
 
-public record AssignRoleRequest(String roleName) {
+import java.util.UUID;
+
+public record AssignRoleRequest(String roleName, UUID organizationId) {
 }

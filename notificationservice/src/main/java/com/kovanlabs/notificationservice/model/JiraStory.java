@@ -54,6 +54,9 @@ public class JiraStory {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @Column(name = "signature_hash", length = 64)
+    private String signatureHash;
+
     // Getters and Setters
     public UUID getId() {
         return id;
@@ -157,5 +160,13 @@ public class JiraStory {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getSignatureHash() {
+        return signatureHash;
+    }
+
+    public void setSignatureHash(String signatureHash) {
+        this.signatureHash = signatureHash;
     }
 }

@@ -2,10 +2,6 @@ package com.kovanlabs.logservice.model;
 
 import java.util.List;
 
-/**
- * Reusable model class representing automatic error resolution suggestions
- * for incoming error log messages.
- */
 public class ErrorSuggestion {
 
     private String errorType;
@@ -17,19 +13,8 @@ public class ErrorSuggestion {
     private int confidence;
     private String suggestionSource;
 
-    /**
-     * Default constructor.
-     */
     public ErrorSuggestion() {}
 
-    /**
-     * Parametrized constructor.
-     *
-     * @param errorType      the detected type of error/exception
-     * @param possibleCauses possible root causes for the error
-     * @param suggestedFixes suggested resolutions/troubleshooting fixes
-     * @param severity       the suggestion severity level (e.g., LOW, MEDIUM, HIGH, CRITICAL)
-     */
     public ErrorSuggestion(String errorType, List<String> possibleCauses, List<String> suggestedFixes, String severity) {
         this.errorType = errorType;
         this.possibleCauses = possibleCauses;

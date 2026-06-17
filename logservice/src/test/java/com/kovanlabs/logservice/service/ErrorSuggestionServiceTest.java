@@ -104,7 +104,7 @@ class ErrorSuggestionServiceTest {
                 "2026-06-09T10:00:00Z"
         );
 
-        org.mockito.Mockito.when(mockRepo.findSimilarKnowledgeBaseEntry("Unknown exception message", null))
+        org.mockito.Mockito.when(mockRepo.findSimilarKnowledgeBaseEntry("Unknown exception message", ""))
                 .thenReturn(java.util.Optional.of(entry));
 
         customService.attachSuggestion(event);

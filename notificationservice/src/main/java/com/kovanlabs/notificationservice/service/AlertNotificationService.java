@@ -43,6 +43,9 @@ public class AlertNotificationService {
     @Value("${alert.thresholds.normal.high:5}")
     private int normalHighThreshold = 5;
 
+    @Value("${alert.suppression.ttl-minutes:15}")
+    private int suppressionTtlMinutes = 15;
+
     @Value("${alert.critical-keywords:database connection failed,unable to connect to database,kafka broker unavailable,outofmemoryerror,connection refused,service unavailable}")
     private List<String> criticalKeywords = java.util.Arrays.asList(
             "database connection failed",
@@ -116,22 +119,23 @@ public class AlertNotificationService {
         // 1. Perform signature lookup restricted by service within the last 24 hours
         LOGGER.info("Alert aggregation started for service: {}", serviceName);
         LocalDateTime limit = LocalDateTime.now().minusHours(24);
-        List<Alert> recentAlerts = alertRepository.findAllByServiceIgnoreCaseAndTimestampAfter(serviceName, limit);
-        String incomingSignature = ErrorFingerprinter.getSignature(rawMessage);
+        String normalizedMessage = ErrorNormalizer.normalize(rawMessage);
+        String signatureHash = ErrorNormalizer.hashSignature(rawMessage);
 
-        Alert alert = recentAlerts.stream()
-                .filter(a -> ErrorFingerprinter.getSignature(a.getMessage()).equals(incomingSignature))
-                .findFirst()
+        Alert alert = alertRepository.findByServiceIgnoreCaseAndSignatureHashAndTimestampAfter(serviceName, signatureHash, limit)
                 .orElse(null);
 
         boolean isNew = (alert == null);
-        LOGGER.info("Aggregation lookup result: {} alert found", isNew ? "no existing" : "existing");
+        LOGGER.info("Aggregation lookup result: {} alert found with signatureHash: {}", isNew ? "no existing" : "existing", signatureHash);
 
         if (isNew) {
             alert = new Alert();
             alert.setId(UUID.randomUUID());
+            alert.setOrganizationId(UUID.fromString("00000000-0000-0000-0000-000000000000"));
             alert.setService(serviceName);
             alert.setMessage(rawMessage);
+            alert.setNormalizedMessage(normalizedMessage);
+            alert.setSignatureHash(signatureHash);
             alert.setCount(incomingCount);
         } else {
             alert.setCount(alert.getCount() + incomingCount);
@@ -213,6 +217,20 @@ public class AlertNotificationService {
         }
 
         // Email Notification
+        boolean shouldSendEmail = true;
+        if (!isNew && alert.getLastNotificationSentAt() != null) {
+            LocalDateTime threshold = LocalDateTime.now().minusMinutes(suppressionTtlMinutes);
+            if (alert.getLastNotificationSentAt().isAfter(threshold)) {
+                LOGGER.info("Email notification suppressed for alert. Last sent at: {}, suppression TTL: {} minutes", 
+                        alert.getLastNotificationSentAt(), suppressionTtlMinutes);
+                shouldSendEmail = false;
+            }
+        }
+
+        if (!shouldSendEmail) {
+            return true;
+        }
+
         LOGGER.info("Resolving email recipients for service: {}", serviceName);
         List<String> recipients = userJiraMappingRepository.findEmailsByServiceNameIgnoreCase(serviceName);
         if (recipients.isEmpty()) {
@@ -271,8 +289,17 @@ public class AlertNotificationService {
                 mailSender.send(message);
                 LOGGER.info("Email sent successfully to {}", trimmedEmail);
                 anySent = true;
-            } catch (MailException | MessagingException ex) {
+            } catch (Exception ex) {
                 LOGGER.error("Failed to send email to {}: {}", trimmedEmail, ex.getMessage(), ex);
+            }
+        }
+
+        if (anySent) {
+            alert.setLastNotificationSentAt(LocalDateTime.now());
+            try {
+                alertRepository.save(alert);
+            } catch (Exception ex) {
+                LOGGER.error("Failed to update lastNotificationSentAt for alert: {}", ex.getMessage(), ex);
             }
         }
 

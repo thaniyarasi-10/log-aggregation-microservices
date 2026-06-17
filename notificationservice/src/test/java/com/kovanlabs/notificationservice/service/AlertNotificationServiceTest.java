@@ -92,7 +92,7 @@ class AlertNotificationServiceTest {
 
         assertThat(sent).isTrue();
         verify(mailSender).send(any(MimeMessage.class));
-        verify(alertRepository).save(any(Alert.class));
+        verify(alertRepository, org.mockito.Mockito.atLeastOnce()).save(any(Alert.class));
         verify(jiraStoryService).createJiraStoryForAlert(anyString());
     }
 
@@ -129,7 +129,7 @@ class AlertNotificationServiceTest {
 
         assertThat(sent).isTrue();
         verify(mailSender, times(2)).send(any(MimeMessage.class));
-        verify(alertRepository).save(any(Alert.class));
+        verify(alertRepository, org.mockito.Mockito.atLeastOnce()).save(any(Alert.class));
     }
 
     @Test

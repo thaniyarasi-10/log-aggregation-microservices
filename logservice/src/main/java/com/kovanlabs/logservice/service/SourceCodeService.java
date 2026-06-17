@@ -23,20 +23,61 @@ public class SourceCodeService {
         LOGGER.info("Dynamic Project Root resolved to: {}", projectRoot.getAbsolutePath());
     }
 
-
-    private File resolveProjectRoot() {
-        File dir = new File(".").getAbsoluteFile();
-        // Go up to 5 levels to search for project root
-        for (int i = 0; i < 5; i++) {
+    private File checkDirAndParents(File dir) {
+        for (int i = 0; i < 8; i++) {
             if (dir == null) break;
             
+            // Check direct subdirectories
             File gatewayDir = new File(dir, "gateway-service");
             File logserviceDir = new File(dir, "logservice");
             if (gatewayDir.isDirectory() && logserviceDir.isDirectory()) {
                 return dir;
             }
+            
+            // Check nested subdirectories (e.g., in a monorepo subdirectory)
+            File nestedRoot = new File(dir, "log-aggregation-microservices");
+            if (nestedRoot.isDirectory()) {
+                File nestedGateway = new File(nestedRoot, "gateway-service");
+                File nestedLogservice = new File(nestedRoot, "logservice");
+                if (nestedGateway.isDirectory() && nestedLogservice.isDirectory()) {
+                    return nestedRoot;
+                }
+            }
+            
             dir = dir.getParentFile();
         }
+        return null;
+    }
+
+    private File resolveProjectRoot() {
+        // First try to check based on current working directory and parent paths
+        File dir = new File(".").getAbsoluteFile();
+        File found = checkDirAndParents(dir);
+        if (found != null) {
+            return found;
+        }
+
+        // If not found, check the classpath to find where the classes are loaded from
+        String classPath = System.getProperty("java.class.path");
+        if (classPath != null) {
+            String separator = System.getProperty("path.separator", File.pathSeparator);
+            String[] entries = classPath.split(separator);
+            for (String entry : entries) {
+                if (entry.contains("log-aggregation-microservices") || 
+                    entry.contains("gateway-service") || 
+                    entry.contains("logservice") || 
+                    entry.contains("notificationservice") || 
+                    entry.contains("servicemanagementservice")) {
+                    
+                    File entryFile = new File(entry).getAbsoluteFile();
+                    found = checkDirAndParents(entryFile);
+                    if (found != null) {
+                        return found;
+                    }
+                }
+            }
+        }
+
         // Fallback to current working directory
         return new File(".").getAbsoluteFile();
     }
@@ -90,6 +131,10 @@ public class SourceCodeService {
         String mappedFolder = serviceName.trim();
         if ("service-management-service".equalsIgnoreCase(mappedFolder)) {
             mappedFolder = "servicemanagementservice";
+        } else if ("notification-service".equalsIgnoreCase(mappedFolder)) {
+            mappedFolder = "notificationservice";
+        } else if ("log-service".equalsIgnoreCase(mappedFolder)) {
+            mappedFolder = "logservice";
         }
 
         File serviceFolder = new File(projectRoot, mappedFolder);
@@ -127,16 +172,119 @@ public class SourceCodeService {
 
 
     private File findFileRecursively(File directory, String targetFileName) {
-        try (var stream = Files.walk(directory.toPath(), 10)) {
-            Path foundPath = stream
-                    .filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().equalsIgnoreCase(targetFileName))
-                    .findFirst()
-                    .orElse(null);
-            return foundPath != null ? foundPath.toFile() : null;
+        final File[] foundFile = new File[1];
+        try {
+            java.nio.file.Files.walkFileTree(directory.toPath(), new java.nio.file.SimpleFileVisitor<Path>() {
+                @Override
+                public java.nio.file.FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes attrs) {
+                    String name = dir.getFileName().toString();
+                    if (name.equals(".git") || name.equals("node_modules") || name.equals("target") || 
+                        name.equals("dist") || name.equals(".idea")) {
+                        return java.nio.file.FileVisitResult.SKIP_SUBTREE;
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public java.nio.file.FileVisitResult visitFile(Path file, java.nio.file.attribute.BasicFileAttributes attrs) {
+                    if (file.getFileName().toString().equalsIgnoreCase(targetFileName)) {
+                        foundFile[0] = file.toFile();
+                        return java.nio.file.FileVisitResult.TERMINATE;
+                    }
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public java.nio.file.FileVisitResult visitFileFailed(Path file, java.io.IOException exc) {
+                    // Ignore access denied or other errors, continue searching
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
         } catch (Exception e) {
             LOGGER.error("Error searching recursively for {}: {}", targetFileName, e.getMessage());
-            return null;
+        }
+        return foundFile[0];
+    }
+
+    /**
+     * Safely applies a code fix to a relative file path under the project root.
+     * Includes path traversal security validation, line-ending normalization, backup, and automatic rollback on error.
+     *
+     * @param relativeFilePath the relative path of the file to modify
+     * @param originalCode     the exact block of code to search for
+     * @param fixedCode        the new block of code to replace it with
+     * @throws IOException       if filesystem operations fail
+     * @throws SecurityException if path traversal is attempted
+     */
+    public void applyCodeFix(String relativeFilePath, String originalCode, String fixedCode) throws IOException {
+        if (relativeFilePath == null || relativeFilePath.isBlank()) {
+            throw new IllegalArgumentException("File path is required");
+        }
+        if (originalCode == null || originalCode.isEmpty()) {
+            throw new IllegalArgumentException("Original code block cannot be empty");
+        }
+
+        // 1. Filesystem safety and path traversal protection
+        Path rootPath = projectRoot.toPath().toAbsolutePath().normalize();
+        Path targetPath = rootPath.resolve(relativeFilePath).normalize().toAbsolutePath();
+
+        if (!targetPath.startsWith(rootPath)) {
+            LOGGER.error("Path traversal attempt blocked: {} is not under project root {}", targetPath, rootPath);
+            throw new SecurityException("Unauthorized file path access (Path Traversal attempted)");
+        }
+
+        File targetFile = targetPath.toFile();
+        if (!targetFile.exists() || !targetFile.isFile()) {
+            throw new java.io.FileNotFoundException("Target file not found: " + relativeFilePath);
+        }
+
+        // Read original file content
+        String fileContent = Files.readString(targetPath, StandardCharsets.UTF_8);
+
+        // 2. Line ending normalization
+        String lineEnding = fileContent.contains("\r\n") ? "\r\n" : "\n";
+        String normalizedOriginal = originalCode.replace("\r\n", "\n").replace("\n", lineEnding);
+        String normalizedFixed = fixedCode.replace("\r\n", "\n").replace("\n", lineEnding);
+
+        // 3. Verify original code block exists exactly
+        if (!fileContent.contains(normalizedOriginal)) {
+            // Check raw version in case normalization causes differences
+            if (fileContent.contains(originalCode)) {
+                normalizedOriginal = originalCode;
+                normalizedFixed = fixedCode;
+            } else {
+                throw new IllegalArgumentException("The original code block was not found in the target file. The code might have changed.");
+            }
+        }
+
+        // Ensure only one exact match or replace the first matching occurrence
+        String updatedContent = fileContent.replace(normalizedOriginal, normalizedFixed);
+
+        // 4. Create backup copy
+        Path backupPath = targetPath.getParent().resolve(targetFile.getName() + ".bak");
+        Files.writeString(backupPath, fileContent, StandardCharsets.UTF_8);
+        LOGGER.debug("Created temporary backup file at {}", backupPath);
+
+        try {
+            // 5. Write modified content
+            Files.writeString(targetPath, updatedContent, StandardCharsets.UTF_8);
+            LOGGER.info("Applied fix successfully to {}", relativeFilePath);
+        } catch (Exception e) {
+            // 6. Rollback on failure
+            LOGGER.error("Failed writing code fix to {}, rolling back from backup...", relativeFilePath, e);
+            try {
+                Files.writeString(targetPath, fileContent, StandardCharsets.UTF_8);
+            } catch (Exception rollbackEx) {
+                LOGGER.error("CRITICAL: Rollback failed for {}!", relativeFilePath, rollbackEx);
+            }
+            throw new IOException("Failed to write updated source code. Rollback initiated. Error: " + e.getMessage(), e);
+        } finally {
+            // Clean up backup file
+            try {
+                Files.deleteIfExists(backupPath);
+            } catch (Exception cleanupEx) {
+                LOGGER.warn("Failed to delete backup file {}: {}", backupPath, cleanupEx.getMessage());
+            }
         }
     }
 }

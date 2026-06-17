@@ -1,0 +1,4 @@
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS normalized_message TEXT;
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS signature_hash VARCHAR(64);
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS last_notification_sent_at TIMESTAMP;
+ALTER TABLE jira_story ADD COLUMN IF NOT EXISTS signature_hash VARCHAR(64);

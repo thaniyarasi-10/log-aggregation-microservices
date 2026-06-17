@@ -10,6 +10,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
 @Entity
@@ -34,6 +36,17 @@ public class UserRoleMapping {
 
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+
+    @PrePersist
+    @PreUpdate
+    public void validate() {
+        if (this.organizationId == null) {
+            throw new IllegalStateException("organization_id cannot be null in UserRoleMapping");
+        }
+    }
 
     public UUID getId() {
         return id;
@@ -73,5 +86,13 @@ public class UserRoleMapping {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public UUID getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(UUID organizationId) {
+        this.organizationId = organizationId;
     }
 }

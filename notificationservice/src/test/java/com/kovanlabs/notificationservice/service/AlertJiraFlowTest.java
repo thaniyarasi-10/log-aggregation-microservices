@@ -49,6 +49,8 @@ class AlertJiraFlowTest {
     @Mock private JavaMailSender mailSender;
     @Mock private AlertRepository alertRepository;
     @Mock private JiraStoryTemplateBuilder jiraStoryTemplateBuilder;
+    @Mock private JiraFailureCache failureCache;
+    @Mock private io.micrometer.core.instrument.MeterRegistry meterRegistry;
 
     private AlertEmailTemplateBuilder templateBuilder;
     private JiraStoryService jiraStoryService;
@@ -66,7 +68,9 @@ class AlertJiraFlowTest {
                 priorityDeadlineResolver,
                 jiraStoryTemplateBuilder,
                 jiraClient,
-                alertRepository
+                alertRepository,
+                failureCache,
+                meterRegistry
         );
 
         alertNotificationService = new AlertNotificationService(
@@ -108,8 +112,8 @@ class AlertJiraFlowTest {
     @Test
     void lowSeverityEmailSent_JiraNotAutoCreated() throws Exception {
         // Setup
-        when(alertRepository.findAllByServiceIgnoreCaseAndTimestampAfter(eq("payment-service"), any()))
-                .thenReturn(new ArrayList<>());
+        when(alertRepository.findByServiceIgnoreCaseAndSignatureHashAndTimestampAfter(eq("payment-service"), anyString(), any()))
+                .thenReturn(Optional.empty());
         when(alertRepository.save(any(Alert.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         when(userServiceClient.getUserIdByEmail("dev@test.com")).thenReturn("user-123");
@@ -125,7 +129,7 @@ class AlertJiraFlowTest {
 
         // Assert
         assertThat(sent).isTrue();
-        verify(alertRepository).save(any(Alert.class));
+        verify(alertRepository, org.mockito.Mockito.atLeastOnce()).save(any(Alert.class));
         verify(jiraClient, never()).createStory(any(), any(), any(), any(), any(), any(), any(), any());
         verify(mailSender).send(any(MimeMessage.class));
     }
@@ -141,8 +145,8 @@ class AlertJiraFlowTest {
         existingAlert.setSeverity("LOW");
         existingAlert.setTimestamp(LocalDateTime.now().minusHours(1));
 
-        when(alertRepository.findAllByServiceIgnoreCaseAndTimestampAfter(eq("payment-service"), any()))
-                .thenReturn(Collections.singletonList(existingAlert));
+        when(alertRepository.findByServiceIgnoreCaseAndSignatureHashAndTimestampAfter(eq("payment-service"), anyString(), any()))
+                .thenReturn(Optional.of(existingAlert));
         when(alertRepository.save(any(Alert.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(alertRepository.findById(existingAlert.getId())).thenReturn(Optional.of(existingAlert));
 
@@ -185,7 +189,7 @@ class AlertJiraFlowTest {
     }
 
     @Test
-    void missingMappingFallback_createsJiraUnassigned() throws Exception {
+    void missingMappingFallback_createsJiraFallbackAssignee() throws Exception {
         // Setup
         Alert alert = new Alert();
         alert.setId(UUID.randomUUID());
@@ -195,8 +199,8 @@ class AlertJiraFlowTest {
         alert.setSeverity("LOW");
         alert.setTimestamp(LocalDateTime.now().minusHours(1));
 
-        when(alertRepository.findAllByServiceIgnoreCaseAndTimestampAfter(eq("payment-service"), any()))
-                .thenReturn(Collections.singletonList(alert));
+        when(alertRepository.findByServiceIgnoreCaseAndSignatureHashAndTimestampAfter(eq("payment-service"), anyString(), any()))
+                .thenReturn(Optional.of(alert));
         when(alertRepository.save(any(Alert.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(alertRepository.findById(alert.getId())).thenReturn(Optional.of(alert));
 
@@ -206,8 +210,11 @@ class AlertJiraFlowTest {
         // No owner mappings
         when(userJiraMappingRepository.findOwnersByServiceNameIgnoreCase("payment-service")).thenReturn(new ArrayList<>());
 
+        when(jiraClient.searchAssignableUsers(any(), any(), any(), any(), eq("arun@company.com")))
+                .thenReturn(Collections.singletonList(new com.kovanlabs.notificationservice.dto.JiraUserDto("fallback-id", "Arun Fallback")));
+
         JiraClient.JiraCreateIssueResponse jiraResp = new JiraClient.JiraCreateIssueResponse("10001", "PAY-12", "https://company.atlassian.net/browse/PAY-12");
-        when(jiraClient.createStory(any(), any(), any(), any(), any(), any(), eq(null), any())).thenReturn(jiraResp);
+        when(jiraClient.createStory(any(), any(), any(), any(), any(), any(), eq("fallback-id"), any())).thenReturn(jiraResp);
 
         when(userServiceClient.getUserIdByEmail("dev@test.com")).thenReturn("user-123");
         when(preferenceService.getOrCreatePreference("user-123")).thenReturn(preference(true));
@@ -223,11 +230,12 @@ class AlertJiraFlowTest {
         // Assert
         assertThat(sent).isTrue();
         assertThat(alert.getSeverity()).isEqualTo("HIGH"); // Escales because count = 2 (Critical error count >= 2)
-        verify(jiraClient).createStory(any(), any(), any(), any(), any(), any(), eq(null), any());
+        verify(jiraClient).createStory(any(), any(), any(), any(), any(), any(), eq("fallback-id"), any());
         
         ArgumentCaptor<JiraStory> storyCaptor = ArgumentCaptor.forClass(JiraStory.class);
         verify(jiraStoryRepository).save(storyCaptor.capture());
-        assertThat(storyCaptor.getValue().getJiraAssigneeAccountId()).isNull();
+        assertThat(storyCaptor.getValue().getJiraAssigneeAccountId()).isEqualTo("fallback-id");
+        assertThat(storyCaptor.getValue().getJiraAssigneeName()).isEqualTo("Arun Fallback");
 
         ArgumentCaptor<MimeMessage> msgCaptor = ArgumentCaptor.forClass(MimeMessage.class);
         verify(mailSender).send(msgCaptor.capture());
@@ -291,8 +299,8 @@ class AlertJiraFlowTest {
         alert.setSeverity("HIGH");
         alert.setTimestamp(LocalDateTime.now());
 
-        when(alertRepository.findAllByServiceIgnoreCaseAndTimestampAfter(eq("payment-service"), any()))
-                .thenReturn(Collections.singletonList(alert));
+        when(alertRepository.findByServiceIgnoreCaseAndSignatureHashAndTimestampAfter(eq("payment-service"), anyString(), any()))
+                .thenReturn(Optional.of(alert));
         when(alertRepository.save(any(Alert.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(alertRepository.findById(alert.getId())).thenReturn(Optional.of(alert));
 

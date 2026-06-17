@@ -18,6 +18,9 @@ public class JiraConfiguration {
     @Column(name = "id", nullable = false)
     private UUID id;
 
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+
     @Column(name = "jira_base_url", nullable = false, length = 255)
     private String jiraBaseUrl;
 
@@ -102,5 +105,13 @@ public class JiraConfiguration {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public UUID getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(UUID organizationId) {
+        this.organizationId = organizationId;
     }
 }

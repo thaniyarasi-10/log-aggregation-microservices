@@ -545,6 +545,40 @@ export const apiService = {
     return response.data;
   },
 
+  async suggestAutoRepair(payload: {
+    service: string;
+    className?: string;
+    fileName: string;
+    lineNumber?: number;
+    message?: string;
+    errorDetails?: string;
+  }): Promise<{
+    explanation: string;
+    targetFile: string;
+    originalCode: string;
+    fixedCode: string;
+    diff: string;
+    githubConfigured: boolean;
+  }> {
+    const response = await api.post('/logs/autorepair/suggest', payload);
+    return response.data;
+  },
+
+  async applyAutoRepair(payload: {
+    filePath: string;
+    originalCode: string;
+    fixedCode: string;
+    applyMode: 'LOCAL' | 'GITHUB';
+  }): Promise<{
+    status: 'success' | 'error';
+    message: string;
+    commitUrl?: string;
+    commitSha?: string;
+  }> {
+    const response = await api.post('/logs/autorepair/apply', payload);
+    return response.data;
+  },
+
   async getServiceHealth(): Promise<ServiceHealth[]> {
     const data = await getByPaths<ServiceHealth[]>(['/api/services/health', '/services/health']);
     return Array.isArray(data) ? data : [];

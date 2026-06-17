@@ -24,6 +24,7 @@ import com.kovanlabs.notificationservice.dto.JiraUserDto;
 import com.kovanlabs.notificationservice.model.JiraConfiguration;
 import com.kovanlabs.notificationservice.repository.JiraConfigurationRepository;
 import com.kovanlabs.notificationservice.service.JiraClient;
+import com.kovanlabs.notificationservice.service.JiraFailureCache;
 
 @RestController
 @RequestMapping("/api/jira")
@@ -33,10 +34,12 @@ public class JiraConfigurationController {
 
     private final JiraConfigurationRepository repository;
     private final JiraClient jiraClient;
+    private final JiraFailureCache failureCache;
 
-    public JiraConfigurationController(JiraConfigurationRepository repository, JiraClient jiraClient) {
+    public JiraConfigurationController(JiraConfigurationRepository repository, JiraClient jiraClient, JiraFailureCache failureCache) {
         this.repository = repository;
         this.jiraClient = jiraClient;
+        this.failureCache = failureCache;
     }
 
     @GetMapping("/configuration")
@@ -84,6 +87,7 @@ public class JiraConfigurationController {
         }
 
         JiraConfiguration saved = repository.save(config);
+        failureCache.clear();
         return ResponseEntity.status(HttpStatus.CREATED).body(toView(saved));
     }
 
@@ -118,6 +122,7 @@ public class JiraConfigurationController {
         }
 
         JiraConfiguration saved = repository.save(config);
+        failureCache.clear();
         return ResponseEntity.ok(toView(saved));
     }
 

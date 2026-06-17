@@ -15,6 +15,7 @@ public class ErrorKnowledgeBaseEntry {
     private int confidence;
     private String source;
     private String createdAt;
+    private String signatureHash;
 
     public ErrorKnowledgeBaseEntry() {}
 
@@ -61,4 +62,7 @@ public class ErrorKnowledgeBaseEntry {
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
+
+    public String getSignatureHash() { return signatureHash; }
+    public void setSignatureHash(String signatureHash) { this.signatureHash = signatureHash; }
 }

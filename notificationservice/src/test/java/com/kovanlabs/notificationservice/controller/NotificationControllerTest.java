@@ -75,7 +75,7 @@ class NotificationControllerTest {
 
     @Test
     void sendAlert_returnsAcceptedStatusWhenSent() throws Exception {
-        when(alertNotificationService.sendAlert(any(AlertNotificationRequest.class))).thenReturn(true);
+        org.mockito.Mockito.lenient().when(alertNotificationService.sendAlert(any(AlertNotificationRequest.class))).thenReturn(true);
 
         mockMvc.perform(post("/api/notifications/alerts")
                         .contentType(MediaType.APPLICATION_JSON)

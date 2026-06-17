@@ -33,6 +33,9 @@ public class AppService {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+
     public UUID getId() {
         return id;
     }
@@ -79,5 +82,13 @@ public class AppService {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public UUID getOrganizationId() {
+        return organizationId;
+    }
+
+    public void setOrganizationId(UUID organizationId) {
+        this.organizationId = organizationId;
     }
 }

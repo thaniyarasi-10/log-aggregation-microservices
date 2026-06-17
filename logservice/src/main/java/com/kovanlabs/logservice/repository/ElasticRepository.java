@@ -406,7 +406,7 @@ public class ElasticRepository {
                     .index(INDEX_PATTERN)
                     .query(boolQuery._toQuery())
                     .from(page * size)
-                    .size(Math.min(size, 500))
+                    .size(Math.min(size, 2000))
                     .sort(sort -> sort
                             .field(f -> f
                                     .field("@timestamp")
@@ -517,7 +517,7 @@ public class ElasticRepository {
                     .index(INDEX_PATTERN)
                     .query(boolQuery._toQuery())
                     .from(page * size)
-                    .size(Math.min(size, 500))
+                    .size(Math.min(size, 2000))
                     .sort(sort -> sort
                             .field(f -> f
                                     .field("@timestamp")
@@ -1366,7 +1366,7 @@ public class ElasticRepository {
                     .index(INDEX_PATTERN)
                     .query(boolQuery._toQuery())
                     .from(page * size)
-                    .size(Math.min(size, 500))
+                    .size(Math.min(size, 2000))
                     .sort(sort -> sort
                             .field(f -> f
                                     .field("@timestamp")
@@ -1470,14 +1470,17 @@ public class ElasticRepository {
             if (entry.getCreatedAt() == null || entry.getCreatedAt().isBlank()) {
                 entry.setCreatedAt(Instant.now().toString());
             }
+            LOGGER.info("[ElasticRepository] Attempting to save new knowledge base entry for type: '{}', pattern: '{}'", 
+                    entry.getErrorType(), entry.getErrorPattern());
             IndexRequest<com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry> request = IndexRequest.of(i -> i
                     .index("error-knowledge-base")
                     .document(entry)
             );
+            LOGGER.debug("[ElasticRepository] Sending IndexRequest for 'error-knowledge-base'...");
             client.index(request);
-            LOGGER.info("Saved new knowledge base entry for type: {}", entry.getErrorType());
+            LOGGER.info("[ElasticRepository] Saved new knowledge base entry for type: {}. Source: {}", entry.getErrorType(), entry.getSource());
         } catch (Exception e) {
-            LOGGER.error("Failed to save knowledge base entry: {}", e.getMessage(), e);
+            LOGGER.error("[ElasticRepository] Failed to save knowledge base entry: {}", e.getMessage(), e);
         }
     }
 
@@ -1486,10 +1489,35 @@ public class ElasticRepository {
             String searchText = (message != null ? message : "") + " " + (errorDetails != null ? errorDetails : "");
             searchText = searchText.trim();
             if (searchText.isEmpty()) {
+                LOGGER.debug("[ElasticRepository] Search text for knowledge base query is empty, returning Optional.empty()");
                 return Optional.empty();
             }
 
             final String queryText = searchText;
+            String sigHash = com.kovanlabs.logservice.util.ErrorNormalizer.hashSignature(queryText);
+
+            LOGGER.debug("[ElasticRepository] Searching 'error-knowledge-base' by signatureHash: {}", sigHash);
+            try {
+                SearchRequest exactRequest = SearchRequest.of(s -> s
+                        .index("error-knowledge-base")
+                        .query(q -> q.term(t -> t.field("signatureHash").value(sigHash)))
+                        .size(1)
+                );
+                SearchResponse<com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry> exactResponse = client.search(exactRequest, com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry.class);
+                if (exactResponse.hits() != null && !exactResponse.hits().hits().isEmpty()) {
+                    Hit<com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry> hit = exactResponse.hits().hits().get(0);
+                    com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry entry = hit.source();
+                    if (entry != null) {
+                        LOGGER.debug("[ElasticRepository] Exact match found in knowledge base by signatureHash: {}", sigHash);
+                        entry.setId(hit.id());
+                        return Optional.of(entry);
+                    }
+                }
+            } catch (Exception ex) {
+                LOGGER.warn("[ElasticRepository] Exact match query by signatureHash failed, falling back to text similarity query: {}", ex.getMessage());
+            }
+
+            LOGGER.debug("[ElasticRepository] Searching 'error-knowledge-base' for text similarity. Query text length: {}", queryText.length());
             SearchRequest request = SearchRequest.of(s -> s
                     .index("error-knowledge-base")
                     .query(q -> q.multiMatch(m -> m
@@ -1502,28 +1530,36 @@ public class ElasticRepository {
 
             SearchResponse<com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry> response = client.search(request, com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry.class);
             if (response.hits() == null || response.hits().hits().isEmpty()) {
+                LOGGER.debug("[ElasticRepository] Elasticsearch search returned 0 hits for query text.");
                 return Optional.empty();
             }
 
+            LOGGER.debug("[ElasticRepository] Query returned {} candidate hits. Evaluating similarity...", response.hits().hits().size());
             for (Hit<com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry> hit : response.hits().hits()) {
                 com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry entry = hit.source();
                 if (entry == null) continue;
 
+                LOGGER.debug("[ElasticRepository] Evaluating candidate ID '{}' with errorType '{}'. Pattern: '{}'", 
+                        hit.id(), entry.getErrorType(), entry.getErrorPattern());
                 if (isSimilar(queryText, entry)) {
+                    LOGGER.debug("[ElasticRepository] Candidate ID '{}' (Type: '{}') matches similarity thresholds. Selected.", hit.id(), entry.getErrorType());
                     entry.setId(hit.id());
                     return Optional.of(entry);
                 }
             }
+            LOGGER.debug("[ElasticRepository] None of the candidates matched the similarity thresholds.");
         } catch (Exception e) {
-            LOGGER.error("Failed to search similar knowledge base entry in Elasticsearch: {}", e.getMessage());
+            LOGGER.error("[ElasticRepository] Failed to search similar knowledge base entry in Elasticsearch: {}", e.getMessage(), e);
         }
         return Optional.empty();
     }
 
     private boolean isSimilar(String query, com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry entry) {
-        return isStringSimilar(query, entry.getErrorPattern()) ||
-               isStringSimilar(query, entry.getErrorType()) ||
-               isStringSimilar(query, entry.getRootCause());
+        boolean match = isStringSimilar(query, entry.getErrorPattern()) ||
+                       isStringSimilar(query, entry.getErrorType()) ||
+                       isStringSimilar(query, entry.getRootCause());
+        LOGGER.debug("[ElasticRepository] Similarity check against KB entry [Type: '{}'] result: {}", entry.getErrorType(), match);
+        return match;
     }
 
     private boolean isStringSimilar(String s1, String s2) {
@@ -1532,15 +1568,30 @@ public class ElasticRepository {
         s2 = s2.trim().toLowerCase();
         if (s1.isEmpty() || s2.isEmpty()) return false;
 
-        if (s1.equals(s2)) return true;
+        if (s1.equals(s2)) {
+            LOGGER.debug("[ElasticRepository] Exact match between query and KB string.");
+            return true;
+        }
 
-        if (s1.contains(s2) || s2.contains(s1)) return true;
+        if (s1.contains(s2) || s2.contains(s1)) {
+            LOGGER.debug("[ElasticRepository] Substring match between query and KB string ('{}' vs '{}').", 
+                    s1.length() > 30 ? s1.substring(0, 30) + "..." : s1, s2);
+            return true;
+        }
 
         double levSim = getLevenshteinSimilarity(s1, s2);
-        if (levSim >= 0.5) return true;
+        if (levSim >= 0.5) {
+            LOGGER.debug("[ElasticRepository] Match based on Levenshtein similarity: {} (>= 0.5) between '{}' and '{}'", 
+                    levSim, s1.length() > 30 ? s1.substring(0, 30) + "..." : s1, s2);
+            return true;
+        }
 
         double jaccard = getTokenJaccardSimilarity(s1, s2);
-        if (jaccard >= 0.4) return true;
+        if (jaccard >= 0.4) {
+            LOGGER.debug("[ElasticRepository] Match based on Jaccard similarity: {} (>= 0.4) between '{}' and '{}'", 
+                    jaccard, s1.length() > 30 ? s1.substring(0, 30) + "..." : s1, s2);
+            return true;
+        }
 
         return false;
     }

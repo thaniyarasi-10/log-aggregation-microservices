@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const buildMetricsFilters = (selectedFilters: FilterOptions): FilterOptions => {
         const metricFilters: FilterOptions = {
-            size: 500
+            size: 2000
         };
 
         if (selectedFilters.service) {
@@ -243,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const initialLogs = await ApiClient.fetchLogs({
             ...selectedFilters,
-            size: 500
+            size: 2000
         });
 
         // Ignore stale responses when users switch filters quickly.
@@ -270,7 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 from: undefined,
                 to: undefined,
                 timePreset: undefined,
-                size: 500
+                size: 2000
             };
 
             const historicalLogs = await ApiClient.fetchLogs(historicalFilters);

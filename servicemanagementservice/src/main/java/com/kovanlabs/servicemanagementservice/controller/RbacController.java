@@ -64,7 +64,7 @@ public class RbacController {
     public ResponseEntity<Void> assignRole(
             @PathVariable("userId") String userId,
             @RequestBody AssignRoleRequest request) {
-        rbacAdminService.assignRoleToUser(userId, request.roleName());
+        rbacAdminService.assignRoleToUser(userId, request.roleName(), request.organizationId());
         return ResponseEntity.noContent().build();
     }
 

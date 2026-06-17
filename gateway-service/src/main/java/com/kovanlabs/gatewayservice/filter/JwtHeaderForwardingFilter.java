@@ -28,7 +28,7 @@ public class JwtHeaderForwardingFilter implements GlobalFilter, Ordered {
                 .filter(Authentication::isAuthenticated)
                 .filter(auth -> auth instanceof JwtAuthenticationToken)
                 .cast(JwtAuthenticationToken.class)
-                .flatMap(jwtAuth -> {
+                .map(jwtAuth -> {
 
                     Jwt jwt = jwtAuth.getToken();
 
@@ -73,12 +73,12 @@ public class JwtHeaderForwardingFilter implements GlobalFilter, Ordered {
                         }
                     };
 
-                    return chain.filter(
-                            exchange.mutate()
-                                    .request(request)
-                                    .build());
+                    return exchange.mutate()
+                            .request(request)
+                            .build();
                 })
-                .switchIfEmpty(chain.filter(exchange));
+                .defaultIfEmpty(exchange)
+                .flatMap(chain::filter);
     }
 
     @Override

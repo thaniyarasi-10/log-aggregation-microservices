@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import com.kovanlabs.logservice.repository.ElasticRepository;
+import com.kovanlabs.logservice.util.ErrorNormalizer;
 
 import jakarta.annotation.PostConstruct;
 import java.io.InputStream;
@@ -32,6 +33,7 @@ public class ErrorSuggestionService {
     private final ElasticRepository elasticRepository;
     private final GeminiAnalysisService geminiAnalysisService;
     private final java.util.Map<String, ErrorSuggestion> aiCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<String, Object> inFlightGeminiCalls = new java.util.concurrent.ConcurrentHashMap<>();
 
     private List<ErrorPatternMapping> mappings = new ArrayList<>();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -41,6 +43,7 @@ public class ErrorSuggestionService {
         this.geminiAnalysisService = null;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ErrorSuggestionService(ElasticRepository elasticRepository, GeminiAnalysisService geminiAnalysisService) {
         this.elasticRepository = elasticRepository;
         this.geminiAnalysisService = geminiAnalysisService;
@@ -200,13 +203,18 @@ public class ErrorSuggestionService {
             return;
         }
 
-        String message = logEvent.getMessage();
-        String errorDetails = logEvent.getErrorDetails();
+        String message = ErrorNormalizer.normalize(logEvent.getMessage());
+        String errorDetails = ErrorNormalizer.normalize(logEvent.getErrorDetails());
+        LOGGER.info("[Learning Pipeline] Starting suggestion attachment for service '{}'. Message: '{}'", 
+                logEvent.getService(), message != null && message.length() > 60 ? message.substring(0, 60) + "..." : message);
+
         String searchText = (message != null ? message : "") + " " + (errorDetails != null ? errorDetails : "");
 
         // 1. Evaluate Rule Engine patterns
+        LOGGER.debug("[Learning Pipeline] Step 1: Checking Rule Engine mappings (count={})", mappings.size());
         for (ErrorPatternMapping mapping : mappings) {
             if (isMatch(searchText, mapping)) {
+                LOGGER.info("[Learning Pipeline] Match found in Rule Engine mappings. Type: '{}'", mapping.getErrorType());
                 logEvent.setErrorType(mapping.getErrorType());
                 logEvent.setPossibleCauses(mapping.getPossibleCauses());
                 logEvent.setSuggestedFixes(mapping.getSuggestedFixes());
@@ -218,27 +226,27 @@ public class ErrorSuggestionService {
             }
         }
 
-        // 2. Check local in-memory cache
-        String cacheKey = (message != null ? message : "") + "|" + (errorDetails != null ? errorDetails : "");
-        ErrorSuggestion cached = aiCache.get(cacheKey);
+        // 2. Check local in-memory cache using signature hash
+        String rawTextForHash = (message != null ? message : "") + "|" + (errorDetails != null ? errorDetails : "");
+        String signatureHash = ErrorNormalizer.hashSignature(rawTextForHash);
+        LOGGER.debug("[Learning Pipeline] Step 2: Checking local in-memory cache with signatureHash: {}", signatureHash);
+        ErrorSuggestion cached = aiCache.get(signatureHash);
         if (cached != null) {
-            logEvent.setErrorType(cached.getErrorType());
-            logEvent.setPossibleCauses(cached.getPossibleCauses());
-            logEvent.setSuggestedFixes(cached.getSuggestedFixes());
-            logEvent.setSeverity(cached.getSeverity());
-            logEvent.setRootCause(cached.getRootCause());
-            logEvent.setConfidence(cached.getConfidence());
-            logEvent.setSuggestionSource(cached.getSuggestionSource());
-            logEvent.setSuggestionGeneratedAt(Instant.now().toString());
+            LOGGER.info("[Learning Pipeline] Match found in local in-memory cache. Source: '{}', Type: '{}'", 
+                    cached.getSuggestionSource(), cached.getErrorType());
+            populateLogEvent(logEvent, cached);
             return;
         }
 
         // 3. Query error-knowledge-base in Elasticsearch
+        LOGGER.debug("[Learning Pipeline] Step 3: Querying Elasticsearch error-knowledge-base");
         if (elasticRepository != null) {
             java.util.Optional<com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry> similar =
                     elasticRepository.findSimilarKnowledgeBaseEntry(message, errorDetails);
             if (similar.isPresent()) {
                 com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry entry = similar.get();
+                LOGGER.info("[Learning Pipeline] Match found in error-knowledge-base. Type: '{}', Source: '{}'", 
+                        entry.getErrorType(), entry.getSource());
                 logEvent.setErrorType(entry.getErrorType());
                 logEvent.setPossibleCauses(entry.getPossibleCauses());
                 logEvent.setSuggestedFixes(entry.getSuggestedFixes());
@@ -258,64 +266,98 @@ public class ErrorSuggestionService {
                 cachedSuggestion.setRootCause(entry.getRootCause());
                 cachedSuggestion.setConfidence(entry.getConfidence());
                 cachedSuggestion.setSuggestionSource("KNOWLEDGE_BASE");
-                aiCache.put(cacheKey, cachedSuggestion);
+                aiCache.put(signatureHash, cachedSuggestion);
                 return;
+            } else {
+                LOGGER.debug("[Learning Pipeline] No similar entry found in error-knowledge-base");
             }
+        } else {
+            LOGGER.warn("[Learning Pipeline] ElasticRepository is null; skipping Step 3 (Knowledge Base)");
         }
 
-        // 4. Call Gemini AI
+        // 4. Call Gemini AI with in-flight request deduplication
+        LOGGER.debug("[Learning Pipeline] Step 4: Calling Gemini AI with in-flight deduplication");
         if (geminiAnalysisService != null) {
-            com.kovanlabs.logservice.model.GeminiResponse geminiResponse =
-                    geminiAnalysisService.analyze(message, errorDetails, logEvent.getService(), logEvent.getLevel(), logEvent.getTimestamp());
-            if (geminiResponse != null) {
-                logEvent.setErrorType(geminiResponse.getErrorType());
-                logEvent.setPossibleCauses(geminiResponse.getPossibleCauses());
-                logEvent.setSuggestedFixes(geminiResponse.getSuggestedFixes());
-                logEvent.setSeverity(geminiResponse.getSeverity());
-                logEvent.setRootCause(geminiResponse.getRootCause());
-                logEvent.setConfidence(geminiResponse.getConfidence());
-                logEvent.setSuggestionSource("GEMINI");
-                logEvent.setSuggestionGeneratedAt(Instant.now().toString());
+            Object lock = inFlightGeminiCalls.computeIfAbsent(signatureHash, k -> new Object());
+            synchronized (lock) {
+                // Double check in-memory cache inside synchronized block
+                ErrorSuggestion secondCheck = aiCache.get(signatureHash);
+                if (secondCheck != null) {
+                    LOGGER.info("[Learning Pipeline] Concurrent request resolved from cache for signatureHash: {}", signatureHash);
+                    populateLogEvent(logEvent, secondCheck);
+                    return;
+                }
 
-                // Cache in memory
-                ErrorSuggestion cachedSuggestion = new ErrorSuggestion(
-                        geminiResponse.getErrorType(),
-                        geminiResponse.getPossibleCauses(),
-                        geminiResponse.getSuggestedFixes(),
-                        geminiResponse.getSeverity()
-                );
-                cachedSuggestion.setRootCause(geminiResponse.getRootCause());
-                cachedSuggestion.setConfidence(geminiResponse.getConfidence());
-                cachedSuggestion.setSuggestionSource("GEMINI");
-                aiCache.put(cacheKey, cachedSuggestion);
+                com.kovanlabs.logservice.model.GeminiResponse geminiResponse =
+                        geminiAnalysisService.analyze(message, errorDetails, logEvent.getService(), logEvent.getLevel(), logEvent.getTimestamp());
+                if (geminiResponse != null) {
+                    LOGGER.info("[Learning Pipeline] Gemini AI response returned. Type: '{}', Confidence: {}%", 
+                            geminiResponse.getErrorType(), geminiResponse.getConfidence());
+                    logEvent.setErrorType(geminiResponse.getErrorType());
+                    logEvent.setPossibleCauses(geminiResponse.getPossibleCauses());
+                    logEvent.setSuggestedFixes(geminiResponse.getSuggestedFixes());
+                    logEvent.setSeverity(geminiResponse.getSeverity());
+                    logEvent.setRootCause(geminiResponse.getRootCause());
+                    logEvent.setConfidence(geminiResponse.getConfidence());
+                    logEvent.setSuggestionSource("GEMINI");
+                    logEvent.setSuggestionGeneratedAt(Instant.now().toString());
 
-                // Save to Elasticsearch Knowledge Base
-                if (elasticRepository != null) {
-                    com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry entry = new com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry(
-                            message,
+                    // Cache in memory
+                    ErrorSuggestion cachedSuggestion = new ErrorSuggestion(
                             geminiResponse.getErrorType(),
-                            geminiResponse.getRootCause(),
                             geminiResponse.getPossibleCauses(),
                             geminiResponse.getSuggestedFixes(),
-                            geminiResponse.getSeverity(),
-                            geminiResponse.getConfidence(),
-                            "GEMINI",
-                            Instant.now().toString()
+                            geminiResponse.getSeverity()
                     );
-                    elasticRepository.saveKnowledgeBaseEntry(entry);
+                    cachedSuggestion.setRootCause(geminiResponse.getRootCause());
+                    cachedSuggestion.setConfidence(geminiResponse.getConfidence());
+                    cachedSuggestion.setSuggestionSource("GEMINI");
+                    aiCache.put(signatureHash, cachedSuggestion);
+
+                    // Save to Elasticsearch Knowledge Base
+                    if (elasticRepository != null) {
+                        LOGGER.info("[Learning Pipeline] Persisting Gemini suggestion to error-knowledge-base index");
+                        com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry entry = new com.kovanlabs.logservice.model.ErrorKnowledgeBaseEntry(
+                                message,
+                                geminiResponse.getErrorType(),
+                                geminiResponse.getRootCause(),
+                                geminiResponse.getPossibleCauses(),
+                                geminiResponse.getSuggestedFixes(),
+                                geminiResponse.getSeverity(),
+                                geminiResponse.getConfidence(),
+                                "GEMINI",
+                                Instant.now().toString()
+                        );
+                        entry.setSignatureHash(signatureHash);
+                        elasticRepository.saveKnowledgeBaseEntry(entry);
+                    } else {
+                        LOGGER.warn("[Learning Pipeline] ElasticRepository is null; cannot persist learned solution");
+                    }
+                    inFlightGeminiCalls.remove(signatureHash);
+                    return;
+                } else {
+                    LOGGER.warn("[Learning Pipeline] Gemini AI analysis returned null");
                 }
-                return;
             }
+            inFlightGeminiCalls.remove(signatureHash);
+        } else {
+            LOGGER.warn("[Learning Pipeline] GeminiAnalysisService is null; skipping Step 4 (Gemini AI)");
         }
 
         // Fallback: rule-engine generic suggestion
+        LOGGER.info("[Learning Pipeline] Falling back to generic Rule Engine suggestion");
         ErrorSuggestion fallback = getGenericSuggestion();
-        logEvent.setErrorType(fallback.getErrorType());
-        logEvent.setPossibleCauses(fallback.getPossibleCauses());
-        logEvent.setSuggestedFixes(fallback.getSuggestedFixes());
-        logEvent.setSeverity(fallback.getSeverity());
-        logEvent.setSuggestionSource("RULE_ENGINE");
-        logEvent.setConfidence(100);
+        populateLogEvent(logEvent, fallback);
+    }
+
+    private void populateLogEvent(LogEvent logEvent, ErrorSuggestion suggestion) {
+        logEvent.setErrorType(suggestion.getErrorType());
+        logEvent.setPossibleCauses(suggestion.getPossibleCauses());
+        logEvent.setSuggestedFixes(suggestion.getSuggestedFixes());
+        logEvent.setSeverity(suggestion.getSeverity());
+        logEvent.setRootCause(suggestion.getRootCause());
+        logEvent.setConfidence(suggestion.getConfidence() == 0 ? 100 : suggestion.getConfidence());
+        logEvent.setSuggestionSource(suggestion.getSuggestionSource() != null ? suggestion.getSuggestionSource() : "RULE_ENGINE");
         logEvent.setSuggestionGeneratedAt(Instant.now().toString());
     }
 

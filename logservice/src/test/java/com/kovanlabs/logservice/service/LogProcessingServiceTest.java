@@ -156,4 +156,25 @@ class LogProcessingServiceTest {
 
         verify(notificationServiceClient, never()).sendAlert(any(), any(), any());
     }
+
+    @Test
+    void process_invalidJson_skipsParsingAndSave() {
+        service.process("\"@metadata\"");
+
+        verify(elasticSearchService, never()).save(any());
+    }
+
+    @Test
+    void processBatch_containsInvalidJson_skipsInvalidButSavesValid() {
+        java.util.List<String> payloads = java.util.List.of(
+            "\"@metadata\"",
+            "{\"service\":\"payment-service\",\"level\":\"INFO\",\"message\":\"msg1\"}"
+        );
+
+        service.processBatch(payloads);
+
+        verify(mongoLogEventRepository).saveAll(any(java.util.List.class));
+        verify(elasticSearchService).saveAll(any(java.util.List.class));
+        verify(metricsTracker).incrementTotalLogs(2);
+    }
 }

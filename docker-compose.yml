@@ -69,9 +69,20 @@ services:
 
     command: [ "filebeat", "-e", "--strict.perms=false" ]
 
+  redis:
+    image: redis:7
+    container_name: redis
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis-data:/data
+
 
 volumes:
   kafka-data:
   zookeeper-data:
   zookeeper-log:
   elasticsearch-data:
+  redis-data:

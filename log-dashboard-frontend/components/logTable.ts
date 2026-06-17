@@ -5,7 +5,7 @@ import { formatDate, escapeHtml, getLevelClass } from '../ts/utils.js';
 
 export class LogTable {
     private container: HTMLElement;
-    private maxLogs: number = 500;
+    private maxLogs: number = 2000;
     private autoScroll: boolean = true;
     private logs: LogEvent[] = [];
     private searchTerm: string = '';

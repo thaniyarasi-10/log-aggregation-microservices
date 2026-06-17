@@ -8,6 +8,7 @@ filebeat.inputs:
       - "/workspace/logservice/logs/*.log"
       - "/workspace/notificationservice/logs/*.log"
       - "/workspace/servicemanagementservice/logs/*.log"
+    exclude_files: ['log-service']
     json.keys_under_root: true
     json.overwrite_keys: true
     json.add_error_key: true

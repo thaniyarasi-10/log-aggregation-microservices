@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { apiService } from '../services/api';
 import { PageHeader, StatusBadge, EmptyState } from '../components/UI';
 import type { AlertItem, UserJiraMapping, ServiceRecord } from '../types';
+import AlertDrawer from '../components/AlertDrawer';
+import { parseAlertMessage } from '../utils/errorParser';
 
 // Deterministic UUID generator to map alert service/message to a stable alertId
 function generateDeterministicUuid(service: string, message: string): string {
@@ -42,6 +44,10 @@ export default function AlertsPage() {
   const [selectedService, setSelectedService] = useState('');
   const [selectedSeverity, setSelectedSeverity] = useState('');
   const [selectedStatus, setSelectedStatus] = useState(''); // OPEN, RESOLVED
+  const [selectedCategory, setSelectedCategory] = useState('');
+
+  // Details Drawer State
+  const [selectedAlert, setSelectedAlert] = useState<AlertItem | null>(null);
 
   // Locally triggered Jira tickets cache to display immediately without page reload
   const [triggeredTickets, setTriggeredTickets] = useState<Record<string, { key: string; url: string; assignee: string }>>({});
@@ -92,12 +98,15 @@ export default function AlertsPage() {
       
       // Determine service primary owner mapping
       const service = services.find((s) => s.name.toLowerCase() === alert.service.toLowerCase());
-      const primaryOwner = service?.owners?.find((o) => o.primary);
+      const primaryOwner = service?.owners?.find((o) => o.primary) || service?.owners?.[0];
       const ownerMapping = primaryOwner
         ? mappings.find((m) => m.userId.toLowerCase() === primaryOwner.userId.toLowerCase())
         : null;
 
       const defaultAssignee = ownerMapping?.jiraDisplayName || primaryOwner?.username || 'Unassigned';
+
+      // Pre-parse the alert message details
+      const parsedDetails = parseAlertMessage(alert.message, alert.service);
 
       return {
         ...alert,
@@ -106,6 +115,7 @@ export default function AlertsPage() {
         jiraUrl: cached?.url || null,
         assigneeName: cached?.assignee || defaultAssignee,
         status: cached ? 'OPEN' : 'RESOLVED', // Resolve status from local mapping (mock resolves for simulation)
+        parsed: parsedDetails,
       };
     });
   }, [alerts, services, mappings, triggeredTickets]);
@@ -155,18 +165,25 @@ export default function AlertsPage() {
   const filteredAlerts = useMemo(() => {
     return alertsWithJira.filter((item) => {
       const matchesSearch = item.message.toLowerCase().includes(search.toLowerCase()) ||
-                            item.service.toLowerCase().includes(search.toLowerCase());
+                            item.service.toLowerCase().includes(search.toLowerCase()) ||
+                            item.parsed.title.toLowerCase().includes(search.toLowerCase()) ||
+                            item.parsed.category.toLowerCase().includes(search.toLowerCase());
       const matchesService = selectedService ? item.service.toLowerCase() === selectedService.toLowerCase() : true;
       const matchesSeverity = selectedSeverity ? item.severity.toUpperCase() === selectedSeverity.toUpperCase() : true;
       const matchesStatus = selectedStatus ? item.status === selectedStatus : true;
+      const matchesCategory = selectedCategory ? item.parsed.category === selectedCategory : true;
 
-      return matchesSearch && matchesService && matchesSeverity && matchesStatus;
+      return matchesSearch && matchesService && matchesSeverity && matchesStatus && matchesCategory;
     });
-  }, [alertsWithJira, search, selectedService, selectedSeverity, selectedStatus]);
+  }, [alertsWithJira, search, selectedService, selectedSeverity, selectedStatus, selectedCategory]);
 
   const uniqueServices = useMemo(() => {
     return Array.from(new Set(alerts.map((a) => a.service)));
   }, [alerts]);
+
+  const uniqueCategories = useMemo(() => {
+    return Array.from(new Set(alertsWithJira.map((a) => a.parsed.category)));
+  }, [alertsWithJira]);
 
   return (
     <main className="page-container">
@@ -210,6 +227,21 @@ export default function AlertsPage() {
               </select>
             </div>
 
+            {/* Category */}
+            <div>
+              <select
+                className="form-control"
+                style={{ height: '31px', padding: '0 8px' }}
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+              >
+                <option value="">— All Categories —</option>
+                {uniqueCategories.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Severity */}
             <div>
               <select
@@ -239,7 +271,7 @@ export default function AlertsPage() {
               </select>
             </div>
 
-            {(search || selectedService || selectedSeverity || selectedStatus) && (
+            {(search || selectedService || selectedSeverity || selectedStatus || selectedCategory) && (
               <button
                 className="btn"
                 style={{ background: 'transparent', border: 'none', textDecoration: 'underline', color: 'var(--accent)' }}
@@ -248,6 +280,7 @@ export default function AlertsPage() {
                   setSelectedService('');
                   setSelectedSeverity('');
                   setSelectedStatus('');
+                  setSelectedCategory('');
                 }}
               >
                 Clear
@@ -291,8 +324,41 @@ export default function AlertsPage() {
                             {item.severity}
                           </span>
                         </td>
-                        <td className="message-cell" title={item.message}>
-                          {item.message}
+                        <td className="message-cell" style={{ maxWidth: '420px', verticalAlign: 'top', padding: '8px 12px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <strong style={{ color: 'var(--text-primary)', fontSize: '0.84rem' }}>{item.parsed.title}</strong>
+                            </div>
+                            <div 
+                              style={{ 
+                                fontSize: '0.76rem', 
+                                color: 'var(--text-secondary)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                              title={`Root cause: ${item.parsed.rootCause}\nFull message: ${item.parsed.cleanMessage}`}
+                            >
+                              {item.parsed.cleanMessage}
+                            </div>
+                            <div>
+                              <button
+                                className="btn"
+                                style={{
+                                  padding: '2px 8px',
+                                  fontSize: '0.7rem',
+                                  background: 'transparent',
+                                  border: '1px solid var(--border)',
+                                  color: 'var(--accent)',
+                                  marginTop: '2px',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => setSelectedAlert(item)}
+                              >
+                                View Details
+                              </button>
+                            </div>
+                          </div>
                         </td>
                         <td>
                           {hasTicket ? (
@@ -328,6 +394,7 @@ export default function AlertsPage() {
           )}
         </div>
       )}
+      <AlertDrawer alert={selectedAlert} onClose={() => setSelectedAlert(null)} />
     </main>
   );
 }

@@ -202,7 +202,7 @@ const tokenize = (line: string, isJava: boolean): string => {
 
 // ─── tabs ────────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'source' | 'json' | 'metadata' | 'raw';
+type Tab = 'overview' | 'source' | 'autorepair' | 'json' | 'metadata' | 'raw';
 
 function getConfidenceLabel(score: number): string {
   if (score >= 90) return 'High Confidence';
@@ -247,6 +247,14 @@ export default function LogDrawer({ log, onClose }: Props) {
   const [sourceError, setSourceError] = useState<string | null>(null);
   const targetLineRef = useRef<HTMLDivElement | null>(null);
 
+  // AI AutoRepair States
+  const [repairPlan, setRepairPlan] = useState<any | null>(null);
+  const [repairLoading, setRepairLoading] = useState(false);
+  const [repairError, setRepairError] = useState<string | null>(null);
+  const [applyMode, setApplyMode] = useState<'LOCAL' | 'GITHUB'>('GITHUB');
+  const [applyingFix, setApplyingFix] = useState(false);
+  const [applyResult, setApplyResult] = useState<any | null>(null);
+
   // ESC to close
   useEffect(() => {
     if (!log) return;
@@ -257,6 +265,40 @@ export default function LogDrawer({ log, onClose }: Props) {
     return () => document.removeEventListener('keydown', handler);
   }, [log, onClose]);
 
+  // Fetch suggest autorepair
+  const fetchRepair = useCallback(() => {
+    if (!log || !log.caller) return;
+    setRepairLoading(true);
+    setRepairError(null);
+    setApplyResult(null);
+    apiService.suggestAutoRepair({
+      service: log.service,
+      className: log.caller.class,
+      fileName: log.caller.file || '',
+      lineNumber: log.caller.line,
+      message: log.message,
+      errorDetails: log.errorDetails
+    })
+      .then((plan) => {
+        setRepairPlan(plan);
+        setApplyMode(plan.githubConfigured ? 'GITHUB' : 'LOCAL');
+        setRepairLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch AutoRepair plan:', err);
+        const msg = err.response?.data?.message || 'Failed to generate repair plan from Gemini.';
+        setRepairError(msg);
+        setRepairLoading(false);
+      });
+  }, [log]);
+
+  // AutoRepair triggers
+  useEffect(() => {
+    if (tab === 'autorepair' && !repairPlan && !repairLoading && log?.caller) {
+      fetchRepair();
+    }
+  }, [tab, repairPlan, repairLoading, log, fetchRepair]);
+
   // Reset tab when a new log is opened
   useEffect(() => {
     if (log) {
@@ -264,6 +306,9 @@ export default function LogDrawer({ log, onClose }: Props) {
       setSourceCode(null);
       setSourceFilePath(null);
       setSourceError(null);
+      setRepairPlan(null);
+      setRepairError(null);
+      setApplyResult(null);
     }
   }, [log]);
 
@@ -312,6 +357,28 @@ export default function LogDrawer({ log, onClose }: Props) {
       return () => clearTimeout(timer);
     }
   }, [tab, sourceLoading, sourceCode]);
+
+  const handleApplyFix = () => {
+    if (!repairPlan) return;
+    setApplyingFix(true);
+    setRepairError(null);
+    apiService.applyAutoRepair({
+      filePath: repairPlan.targetFile,
+      originalCode: repairPlan.originalCode,
+      fixedCode: repairPlan.fixedCode,
+      applyMode: applyMode
+    })
+      .then((res) => {
+        setApplyResult(res);
+        setApplyingFix(false);
+      })
+      .catch((err) => {
+        console.error('Failed to apply AutoRepair fix:', err);
+        const msg = err.response?.data?.message || 'Failed to execute repair plan.';
+        setRepairError(msg);
+        setApplyingFix(false);
+      });
+  };
 
   if (!log) return null;
 
@@ -406,8 +473,12 @@ export default function LogDrawer({ log, onClose }: Props) {
 
         {/* ── Tabs ── */}
         <div className="ld-tabs" role="tablist">
-          {(['overview', 'source', 'json', 'metadata', 'raw'] as Tab[]).map(t => {
+          {(['overview', 'source', 'autorepair', 'json', 'metadata', 'raw'] as Tab[]).map(t => {
             if (t === 'source' && !log.caller) return null;
+            if (t === 'autorepair') {
+              const isErrOrWarn = log.level && (log.level.toUpperCase() === 'ERROR' || log.level.toUpperCase() === 'WARN');
+              if (!log.caller || !isErrOrWarn) return null;
+            }
             return (
               <button
                 key={t}
@@ -416,7 +487,7 @@ export default function LogDrawer({ log, onClose }: Props) {
                 className={`ld-tab${tab === t ? ' ld-tab-active' : ''}`}
                 onClick={() => setTab(t)}
               >
-                {t === 'source' ? 'Source Code' : t.charAt(0).toUpperCase() + t.slice(1)}
+                {t === 'source' ? 'Source Code' : t === 'autorepair' ? 'Auto Repair' : t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             );
           })}
@@ -587,6 +658,227 @@ export default function LogDrawer({ log, onClose }: Props) {
                     <pre className="ld-stack-trace">{log.errorDetails}</pre>
                   )}
                 </section>
+              )}
+            </div>
+          )}
+
+          {/* AUTO REPAIR */}
+          {tab === 'autorepair' && (
+            <div className="ld-autorepair-tab animate-fade-in">
+              {repairLoading && (
+                <div className="ld-code-loading" style={{ minHeight: '200px' }}>
+                  <div className="ns-spinner" />
+                  <span>Generating AI code repair proposal...</span>
+                </div>
+              )}
+
+              {repairError && !applyingFix && (
+                <div className="ld-repair-error-card">
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
+                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                    <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/>
+                  </svg>
+                  <div>
+                    <strong style={{ display: 'block', marginBottom: '4px' }}>Auto Repair Suggestion Error</strong>
+                    <span>{repairError}</span>
+                    <button onClick={fetchRepair} className="ld-repair-btn-primary" style={{ marginTop: '12px' }}>
+                      Retry Analysis
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Success State */}
+              {applyResult && (
+                <div className="ld-repair-success-card">
+                  <svg className="ld-repair-success-icon" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                  </svg>
+                  <div className="ld-repair-success-title">
+                    {applyResult.status === 'success' ? 'Fix Applied Successfully!' : 'Failed to Apply Fix'}
+                  </div>
+                  <div className="ld-repair-success-details">
+                    {applyResult.message}
+                    {applyResult.commitSha && (
+                      <div>
+                        <span className="ld-repair-success-commit">SHA: {applyResult.commitSha.substring(0, 7)}</span>
+                      </div>
+                    )}
+                  </div>
+                  {applyResult.commitUrl && (
+                    <a href={applyResult.commitUrl} target="_blank" rel="noopener noreferrer" className="ld-repair-success-link">
+                      <span>View Commit on GitHub</span>
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                        <path fillRule="evenodd" d="M8.636 3.5a.5.5 0 0 0-.5-.5H1.5A1.5 1.5 0 0 0 0 4.5v10A1.5 1.5 0 0 0 1.5 16h10a1.5 1.5 0 0 0 1.5-1.5V7.864a.5.5 0 0 0-1 0V14.5a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5h6.636a.5.5 0 0 0 .5-.5z"/>
+                        <path fillRule="evenodd" d="M16 .5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0 0 1h3.793L6.146 9.146a.5.5 0 1 0 .708.708L15 1.707V5.5a.5.5 0 0 0 1 0v-5z"/>
+                      </svg>
+                    </a>
+                  )}
+                  {applyResult.status === 'success' && (
+                    <button
+                      className="ld-repair-btn-primary"
+                      style={{ marginTop: '10px' }}
+                      onClick={() => {
+                        // Reset source code viewer content and redirect user to see the changed file
+                        setSourceCode(null);
+                        setTab('source');
+                      }}
+                    >
+                      View Source Code Location
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Repair Proposal Details */}
+              {repairPlan && !applyResult && !repairLoading && (
+                <>
+                  {/* Root Cause & Explanation */}
+                  <div className="ld-repair-explanation animate-fade-in">
+                    <div className="ld-repair-explanation-title">
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ color: 'var(--accent)' }}>
+                        <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                      </svg>
+                      <span>Gemini Root Cause & Fix Explanation</span>
+                    </div>
+                    <div className="ld-repair-explanation-body">
+                      {repairPlan.explanation.split(/\n\n+/).map((p: string, i: number) => (
+                        <p key={i}>{p}</p>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Code Diff Block */}
+                  <div>
+                    <div className="ld-diff-title-bar">
+                      <div className="ld-diff-filepath">
+                        {repairPlan.targetFile}
+                      </div>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-dim)' }}>
+                        PROPOSED DIFF
+                      </span>
+                    </div>
+                    <div className="ld-diff-container">
+                      <div className="ld-diff-scroller">
+                        {repairPlan.diff.split(/\r?\n/).map((line: string, idx: number) => {
+                          let type = 'normal';
+                          let sign = ' ';
+                          let content = line;
+
+                          if (line.startsWith('+') && !line.startsWith('+++')) {
+                            type = 'added';
+                            sign = '+';
+                            content = line.substring(1);
+                          } else if (line.startsWith('-') && !line.startsWith('---')) {
+                            type = 'removed';
+                            sign = '-';
+                            content = line.substring(1);
+                          }
+
+                          return (
+                            <div key={idx} className={`diff-line ${type}`}>
+                              <span className="diff-ln">{idx + 1}</span>
+                              <span className="diff-sign">{sign}</span>
+                              <span className="diff-text">{content}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Select Mode Panel */}
+                  <div className="ld-repair-options-panel animate-fade-in">
+                    <span className="ld-suggestion-subtitle">Deployment Option</span>
+                    <div className="ld-repair-mode-list">
+                      {repairPlan.githubConfigured ? (
+                        <>
+                          <label className="ld-repair-mode-option">
+                            <input
+                              type="radio"
+                              name="applyMode"
+                              value="GITHUB"
+                              checked={applyMode === 'GITHUB'}
+                              onChange={() => setApplyMode('GITHUB')}
+                            />
+                            Commit to GitHub (Remote Server)
+                          </label>
+                          <label className="ld-repair-mode-option">
+                            <input
+                              type="radio"
+                              name="applyMode"
+                              value="LOCAL"
+                              checked={applyMode === 'LOCAL'}
+                              onChange={() => setApplyMode('LOCAL')}
+                            />
+                            Apply Locally (Local Disk)
+                          </label>
+                        </>
+                      ) : (
+                        <>
+                          <label className="ld-repair-mode-option disabled">
+                            <input
+                              type="radio"
+                              name="applyMode"
+                              value="GITHUB"
+                              disabled
+                            />
+                            Commit to GitHub (Unavailable)
+                          </label>
+                          <label className="ld-repair-mode-option">
+                            <input
+                              type="radio"
+                              name="applyMode"
+                              value="LOCAL"
+                              checked={applyMode === 'LOCAL'}
+                              onChange={() => setApplyMode('LOCAL')}
+                            />
+                            Apply Locally (Local Disk)
+                          </label>
+                        </>
+                      )}
+                    </div>
+
+                    {!repairPlan.githubConfigured && (
+                      <div className="ld-github-warning-card">
+                        GitHub credentials are not configured in application properties. Falling back to local filesystem updates.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Apply Actions */}
+                  {repairError && (
+                    <div className="ld-repair-error-card animate-fade-in">
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                        <path d="M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 4.995z"/>
+                      </svg>
+                      <span>{repairError}</span>
+                    </div>
+                  )}
+
+                  <div className="ld-repair-button-group">
+                    <button
+                      className="ld-repair-btn-primary"
+                      onClick={handleApplyFix}
+                      disabled={applyingFix}
+                    >
+                      {applyingFix ? (
+                        <>
+                          <div className="ns-spinner" style={{ width: '12px', height: '12px', borderWidth: '2px' }} />
+                          <span>Applying Code Fix...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.4-5.446z"/>
+                          </svg>
+                          <span>{applyMode === 'GITHUB' ? 'Commit and Apply Fix' : 'Apply Fix Locally'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           )}

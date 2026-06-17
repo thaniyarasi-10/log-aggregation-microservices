@@ -63,11 +63,18 @@ public class LogProcessingService {
             return;
         }
 
+        String trimmed = json.trim();
+        if (!trimmed.startsWith("{")) {
+            LOGGER.warn("Received invalid non-object log JSON, skipping: {}", trimmed.length() > 100 ? trimmed.substring(0, 100) + "..." : trimmed);
+            return;
+        }
+
         try {
-            LogEvent logEvent = objectMapper.readValue(json, LogEvent.class);
+            LogEvent logEvent = objectMapper.readValue(trimmed, LogEvent.class);
             processLogEvent(logEvent);
         } catch (Exception e) {
-            LOGGER.error("Failed to deserialize log JSON: {}", e.getMessage(), e);
+            LOGGER.error("Failed to deserialize log JSON: {}", e.getMessage());
+            LOGGER.debug("Deserialization stack trace:", e);
         }
     }
 
@@ -153,8 +160,14 @@ public class LogProcessingService {
                 continue;
             }
 
+            String trimmed = json.trim();
+            if (!trimmed.startsWith("{")) {
+                LOGGER.warn("Skipping invalid non-object log JSON: {}", trimmed.length() > 100 ? trimmed.substring(0, 100) + "..." : trimmed);
+                continue;
+            }
+
             try {
-                LogEvent logEvent = objectMapper.readValue(json, LogEvent.class);
+                LogEvent logEvent = objectMapper.readValue(trimmed, LogEvent.class);
                 if (logEvent == null) {
                     continue;
                 }
@@ -192,7 +205,8 @@ public class LogProcessingService {
                 eventsToSave.add(logEvent);
 
             } catch (Exception e) {
-                LOGGER.error("Failed to parse or pre-process log JSON: {}", e.getMessage(), e);
+                LOGGER.error("Failed to parse or pre-process log JSON: {}", e.getMessage());
+                LOGGER.debug("Parse failure stack trace:", e);
             }
         }
 
@@ -241,18 +255,18 @@ public class LogProcessingService {
     }
 
     private String computeFingerprint(LogEvent logEvent) {
-        String service = logEvent.getService() != null ? logEvent.getService() : "";
-        String level = logEvent.getLevel() != null ? logEvent.getLevel() : "";
-        String message = logEvent.getMessage() != null ? logEvent.getMessage() : "";
-        String errorDetails = logEvent.getErrorDetails() != null ? logEvent.getErrorDetails() : "";
+        String service = logEvent.getService() != null ? logEvent.getService().trim() : "";
+        String level = logEvent.getLevel() != null ? logEvent.getLevel().trim() : "";
+        String message = logEvent.getMessage() != null ? com.kovanlabs.logservice.util.ErrorNormalizer.normalize(logEvent.getMessage()) : "";
+        String errorDetails = logEvent.getErrorDetails() != null ? com.kovanlabs.logservice.util.ErrorNormalizer.normalize(logEvent.getErrorDetails()) : "";
         String raw = service + "|" + level + "|" + message + "|" + errorDetails;
         return sha256(raw);
     }
 
     private String computeErrorFingerprint(LogEvent logEvent) {
-        String service = logEvent.getService() != null ? logEvent.getService() : "";
-        String message = logEvent.getMessage() != null ? logEvent.getMessage() : "";
-        String errorDetails = logEvent.getErrorDetails() != null ? logEvent.getErrorDetails() : "";
+        String service = logEvent.getService() != null ? logEvent.getService().trim() : "";
+        String message = logEvent.getMessage() != null ? com.kovanlabs.logservice.util.ErrorNormalizer.normalize(logEvent.getMessage()) : "";
+        String errorDetails = logEvent.getErrorDetails() != null ? com.kovanlabs.logservice.util.ErrorNormalizer.normalize(logEvent.getErrorDetails()) : "";
         String raw = service + "|" + message + "|" + errorDetails;
         return sha256(raw);
     }

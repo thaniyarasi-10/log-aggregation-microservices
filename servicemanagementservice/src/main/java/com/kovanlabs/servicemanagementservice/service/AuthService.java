@@ -107,6 +107,7 @@ public class AuthService {
             mapping.setRole(defaultRole);
             mapping.setAssignedAt(LocalDateTime.now());
             mapping.setUpdatedAt(LocalDateTime.now());
+            mapping.setOrganizationId(UUID.fromString("00000000-0000-0000-0000-000000000000"));
             userRoleMappingRepository.save(mapping);
         }
     }

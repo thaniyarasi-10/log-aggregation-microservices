@@ -95,7 +95,7 @@ public class RbacAdminService {
     }
 
     @Transactional
-    public void assignRoleToUser(String userId, String roleName) {
+    public void assignRoleToUser(String userId, String roleName, UUID organizationId) {
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
@@ -114,6 +114,7 @@ public class RbacAdminService {
             mapping.setRole(role);
             mapping.setAssignedAt(LocalDateTime.now());
             mapping.setUpdatedAt(LocalDateTime.now());
+            mapping.setOrganizationId(organizationId != null ? organizationId : UUID.fromString("00000000-0000-0000-0000-000000000000"));
             userRoleMappingRepository.save(mapping);
         }
 
@@ -191,6 +192,7 @@ public class RbacAdminService {
                         mapping.setRole(role);
                         mapping.setAssignedAt(LocalDateTime.now());
                         mapping.setUpdatedAt(LocalDateTime.now());
+                        mapping.setOrganizationId(UUID.fromString("00000000-0000-0000-0000-000000000000"));
                         userRoleMappingRepository.save(mapping);
                     }
                 }
@@ -217,7 +219,9 @@ public class RbacAdminService {
                         UserServiceMapping mapping = new UserServiceMapping();
                         mapping.setUser(savedUser);
                         mapping.setService(service);
-                        mapping.setPrimary(false);
+                        List<UserServiceMapping> serviceMappings = userServiceMappingRepository.findByService_Id(service.getId());
+                        boolean hasPrimary = serviceMappings.stream().anyMatch(UserServiceMapping::isPrimary);
+                        mapping.setPrimary(!hasPrimary);
                         mapping.setCreatedAt(LocalDateTime.now());
                         mapping.setUpdatedAt(LocalDateTime.now());
                         userServiceMappingRepository.save(mapping);
@@ -276,6 +280,7 @@ public class RbacAdminService {
                     mapping.setRole(role);
                     mapping.setAssignedAt(LocalDateTime.now());
                     mapping.setUpdatedAt(LocalDateTime.now());
+                    mapping.setOrganizationId(UUID.fromString("00000000-0000-0000-0000-000000000000"));
                     userRoleMappingRepository.save(mapping);
                 }
             }
@@ -300,7 +305,9 @@ public class RbacAdminService {
                     UserServiceMapping mapping = new UserServiceMapping();
                     mapping.setUser(savedUser);
                     mapping.setService(service);
-                    mapping.setPrimary(false);
+                    List<UserServiceMapping> serviceMappings = userServiceMappingRepository.findByService_Id(service.getId());
+                    boolean hasPrimary = serviceMappings.stream().anyMatch(UserServiceMapping::isPrimary);
+                    mapping.setPrimary(!hasPrimary);
                     mapping.setCreatedAt(LocalDateTime.now());
                     mapping.setUpdatedAt(LocalDateTime.now());
                     userServiceMappingRepository.save(mapping);

@@ -42,6 +42,8 @@ class JiraStoryServiceTest {
     @Mock private JiraStoryTemplateBuilder templateBuilder;
     @Mock private JiraClient jiraClient;
     @Mock private AlertRepository alertRepository;
+    @Mock private JiraFailureCache failureCache;
+    @Mock private io.micrometer.core.instrument.MeterRegistry meterRegistry;
 
     private JiraStoryService service;
     private AlertRequest validAlert;
@@ -56,7 +58,9 @@ class JiraStoryServiceTest {
                 priorityDeadlineResolver,
                 templateBuilder,
                 jiraClient,
-                alertRepository
+                alertRepository,
+                failureCache,
+                meterRegistry
         );
 
         validAlert = new AlertRequest(
@@ -115,20 +119,41 @@ class JiraStoryServiceTest {
     }
 
     @Test
-    void triggerJiraStoryCreation_missingPrimaryOwner_savesFailedAndReturnsFailed() {
+    void triggerJiraStoryCreation_missingPrimaryOwner_fallsBackToIntegrationUserAndSucceeds() {
         when(jiraStoryRepository.existsByAlertIdAndStatusIgnoreCase("alert-123", "OPEN")).thenReturn(false);
         when(jiraConfigurationRepository.findFirstByActiveTrue()).thenReturn(Optional.of(mockConfig));
         when(priorityDeadlineResolver.resolveDueDate("CRITICAL")).thenReturn(LocalDateTime.now().plusHours(4));
         when(userJiraMappingRepository.findPrimaryOwnersByServiceNameIgnoreCase("payment-service")).thenReturn(Collections.emptyList());
 
+        when(jiraClient.searchAssignableUsers(any(), any(), any(), any(), eq("arun@company.com")))
+                .thenReturn(Collections.singletonList(new com.kovanlabs.notificationservice.dto.JiraUserDto("fallback-id", "Arun Fallback")));
+
+        when(templateBuilder.buildSummary(validAlert)).thenReturn("summary");
+        when(templateBuilder.buildDescription(validAlert)).thenReturn("description");
+
+        JiraClient.JiraCreateIssueResponse jiraResp = new JiraClient.JiraCreateIssueResponse("10002", "PAY-13", "http://jira/PAY-13");
+        when(jiraClient.createStory(
+                eq("https://company.atlassian.net"),
+                eq("fake-token"),
+                eq("arun@company.com"),
+                eq("PAY"),
+                eq("summary"),
+                eq("description"),
+                eq("fallback-id"),
+                anyString()
+        )).thenReturn(jiraResp);
+
         JiraStoryResponse response = service.triggerJiraStoryCreation(validAlert);
 
-        assertThat(response.status()).isEqualTo("FAILED");
-        assertThat(response.message()).contains("No primary owner configured for service");
+        assertThat(response.status()).isEqualTo("CREATED");
+        assertThat(response.jiraIssueKey()).isEqualTo("PAY-13");
 
         ArgumentCaptor<JiraStory> storyCaptor = ArgumentCaptor.forClass(JiraStory.class);
         verify(jiraStoryRepository).save(storyCaptor.capture());
-        assertThat(storyCaptor.getValue().getStatus()).isEqualTo("FAILED");
+        JiraStory saved = storyCaptor.getValue();
+        assertThat(saved.getStatus()).isEqualTo("OPEN");
+        assertThat(saved.getJiraAssigneeAccountId()).isEqualTo("fallback-id");
+        assertThat(saved.getJiraAssigneeName()).isEqualTo("Arun Fallback");
     }
 
     @Test
@@ -153,7 +178,7 @@ class JiraStoryServiceTest {
     }
 
     @Test
-    void triggerJiraStoryCreation_missingJiraMappingForPrimaryOwner_savesFailedAndReturnsFailed() {
+    void triggerJiraStoryCreation_missingJiraMappingForPrimaryOwner_fallsBackToIntegrationUserAndSucceeds() {
         when(jiraStoryRepository.existsByAlertIdAndStatusIgnoreCase("alert-123", "OPEN")).thenReturn(false);
         when(jiraConfigurationRepository.findFirstByActiveTrue()).thenReturn(Optional.of(mockConfig));
         when(priorityDeadlineResolver.resolveDueDate("CRITICAL")).thenReturn(LocalDateTime.now().plusHours(4));
@@ -162,14 +187,35 @@ class JiraStoryServiceTest {
         when(userJiraMappingRepository.findPrimaryOwnersByServiceNameIgnoreCase("payment-service")).thenReturn(singleOwner);
         when(userJiraMappingRepository.findByUserId("user-1")).thenReturn(Optional.empty());
 
+        when(jiraClient.searchAssignableUsers(any(), any(), any(), any(), eq("arun@company.com")))
+                .thenReturn(Collections.singletonList(new com.kovanlabs.notificationservice.dto.JiraUserDto("fallback-id", "Arun Fallback")));
+
+        when(templateBuilder.buildSummary(validAlert)).thenReturn("summary");
+        when(templateBuilder.buildDescription(validAlert)).thenReturn("description");
+
+        JiraClient.JiraCreateIssueResponse jiraResp = new JiraClient.JiraCreateIssueResponse("10002", "PAY-13", "http://jira/PAY-13");
+        when(jiraClient.createStory(
+                eq("https://company.atlassian.net"),
+                eq("fake-token"),
+                eq("arun@company.com"),
+                eq("PAY"),
+                eq("summary"),
+                eq("description"),
+                eq("fallback-id"),
+                anyString()
+        )).thenReturn(jiraResp);
+
         JiraStoryResponse response = service.triggerJiraStoryCreation(validAlert);
 
-        assertThat(response.status()).isEqualTo("FAILED");
-        assertThat(response.message()).contains("No active Jira mapping found for primary owner: Arun");
+        assertThat(response.status()).isEqualTo("CREATED");
+        assertThat(response.jiraIssueKey()).isEqualTo("PAY-13");
 
         ArgumentCaptor<JiraStory> storyCaptor = ArgumentCaptor.forClass(JiraStory.class);
         verify(jiraStoryRepository).save(storyCaptor.capture());
-        assertThat(storyCaptor.getValue().getStatus()).isEqualTo("FAILED");
+        JiraStory saved = storyCaptor.getValue();
+        assertThat(saved.getStatus()).isEqualTo("OPEN");
+        assertThat(saved.getJiraAssigneeAccountId()).isEqualTo("fallback-id");
+        assertThat(saved.getJiraAssigneeName()).isEqualTo("Arun Fallback");
     }
 
     @Test

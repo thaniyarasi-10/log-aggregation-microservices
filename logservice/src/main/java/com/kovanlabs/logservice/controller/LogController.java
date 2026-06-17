@@ -143,9 +143,9 @@ public class LogController {
 
         Map<String, Object> metrics = elasticRepository.getMetrics(
                 finalServices,
-                null,
-                null,
-                null,
+                environment,
+                finalLevels,
+                message,
                 from,
                 to,
                 timePreset,
