@@ -31,7 +31,7 @@ public class RequestLoggingFilter implements GlobalFilter, Ordered {
             try {
                 long duration = System.currentTimeMillis() - startTime;
                 ServerHttpResponse response = exchange.getResponse();
-                int statusCode = response.getStatusCode() != null ? response.getStatusCode().value() : 200;
+                int statusCode = response.getStatusCode() != null ? response.getStatusCode().value() : 500;
 
                 String level = "INFO";
                 if (statusCode >= 500) {
