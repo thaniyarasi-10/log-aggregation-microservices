@@ -15,6 +15,7 @@ import {
 } from 'chart.js';
 import { useRealtimeLogs } from '../hooks/useRealtimeLogs';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
 import { apiService } from '../services/api';
 import { PageHeader, MetricCard, FilterToolbar, StatusBadge, EmptyState } from '../components/UI';
 import type { LogEvent, LogFilters, MetricsResponse, ServiceHealth } from '../types';
@@ -101,6 +102,7 @@ export function ServerIcon() {
 
 export default function LogsPage() {
   const { isAdmin, user } = useAuth();
+  const { activeOrganization } = useOrganization();
   const navigate = useNavigate();
 
   const handleLogClick = (log: LogEvent) => {
@@ -156,7 +158,7 @@ export default function LogsPage() {
     };
     void loadServices();
     return () => { active = false; };
-  }, [allowedServices, isAdmin]);
+  }, [allowedServices, isAdmin, activeOrganization?.id]);
 
   // Fetch metrics whenever key changes
   useEffect(() => {
@@ -205,7 +207,7 @@ export default function LogsPage() {
       active = false;
       clearInterval(timer);
     };
-  }, [metricsKey]);
+  }, [metricsKey, activeOrganization?.id]);
 
   // Fetch service health status
   useEffect(() => {
@@ -228,7 +230,7 @@ export default function LogsPage() {
       active = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [activeOrganization?.id]);
 
   // Compute Throughput average
   const throughput = useMemo(() => {

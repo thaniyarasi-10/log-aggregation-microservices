@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import Modal from '../components/Modal';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
 import { apiService, extractApiErrorMessage } from '../services/api';
 import { PageHeader, MetricCard, StatusBadge, EmptyState } from '../components/UI';
 import type { ServiceAccessRequest, ServiceRecord, ServiceHealth, MetricsResponse, LogEvent, AlertItem } from '../types';
@@ -27,7 +28,9 @@ export function ServerIcon() {
 }
 
 export default function ServicesPage() {
-  const { isAdmin } = useAuth();
+  const { activeOrganization, permissions } = useOrganization();
+  const hasServicesManage = permissions.includes('services:manage');
+  const hasApiKeysManage = permissions.includes('api-keys:manage') || permissions.includes('services:manage');
   const addNameInputRef = useRef<HTMLInputElement | null>(null);
 
   // Core data states
@@ -60,11 +63,88 @@ export default function ServicesPage() {
   const [drawerAlerts, setDrawerAlerts] = useState<AlertItem[]>([]);
   const [drawerAlertsLoading, setDrawerAlertsLoading] = useState<boolean>(false);
 
+  // Credentials view states
+  const [apiKey, setApiKey] = useState<string>('');
+  const [serviceSecret, setServiceSecret] = useState<string>('');
+  const [revealedKey, setRevealedKey] = useState<boolean>(false);
+  const [revealedSecret, setRevealedSecret] = useState<boolean>(false);
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [createForm, setCreateForm] = useState<ServiceForm>(emptyServiceForm);
   const [editService, setEditService] = useState<ServiceRecord | null>(null);
   const [editForm, setEditForm] = useState<ServiceForm>(emptyServiceForm);
+
+  // Reset credential states on service change
+  useEffect(() => {
+    setApiKey('');
+    setServiceSecret('');
+    setRevealedKey(false);
+    setRevealedSecret(false);
+  }, [selectedService]);
+
+  // Reset selected service on organization change
+  useEffect(() => {
+    setSelectedService(null);
+  }, [activeOrganization?.id]);
+
+  const handleRevealApiKey = async () => {
+    if (!selectedService?.id) return;
+    try {
+      const res = await apiService.getServiceApiKey(selectedService.id);
+      setApiKey(res.apiKey);
+      setRevealedKey(true);
+      setActionError('');
+    } catch (err) {
+      setActionError(extractApiErrorMessage(err, 'Failed to retrieve API Key'));
+    }
+  };
+
+  const handleRevealServiceSecret = async () => {
+    if (!selectedService?.id) return;
+    try {
+      const res = await apiService.getServiceSecret(selectedService.id);
+      setServiceSecret(res.serviceSecret || '');
+      setRevealedSecret(true);
+      setActionError('');
+    } catch (err) {
+      setActionError(extractApiErrorMessage(err, 'Failed to retrieve Service Secret'));
+    }
+  };
+
+  const handleRegenerateApiKey = async () => {
+    if (!selectedService?.id) return;
+    if (!window.confirm('Are you sure you want to regenerate the API key? Existing clients using this key will be blocked.')) return;
+    try {
+      setSubmitting(true);
+      const res = await apiService.regenerateServiceApiKey(selectedService.id);
+      setApiKey(res.apiKey);
+      setRevealedKey(true);
+      setActionError('');
+      alert('API Key regenerated successfully!');
+    } catch (err) {
+      setActionError(extractApiErrorMessage(err, 'Failed to regenerate API Key'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRegenerateServiceSecret = async () => {
+    if (!selectedService?.id) return;
+    if (!window.confirm('Are you sure you want to regenerate the service secret? Existing clients using this secret will be blocked.')) return;
+    try {
+      setSubmitting(true);
+      const res = await apiService.regenerateServiceSecret(selectedService.id);
+      setServiceSecret(res.serviceSecret || '');
+      setRevealedSecret(true);
+      setActionError('');
+      alert('Service Secret regenerated successfully!');
+    } catch (err) {
+      setActionError(extractApiErrorMessage(err, 'Failed to regenerate Service Secret'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // Clean error helpers
   const toCleanLoadError = (err: unknown) => {
@@ -85,7 +165,7 @@ export default function ServicesPage() {
 
   // Loaders
   const loadServices = async () => {
-    const data = isAdmin ? await apiService.getAdminServices() : await apiService.getServices();
+    const data = hasServicesManage ? await apiService.getAdminServices() : await apiService.getServices();
     setServices(data);
   };
 
@@ -131,7 +211,7 @@ export default function ServicesPage() {
         if (showLoader) {
           setLoading(true);
         }
-        const data = isAdmin ? await apiService.getAdminServices() : await apiService.getServices();
+        const data = hasServicesManage ? await apiService.getAdminServices() : await apiService.getServices();
         if (!active) return;
         setServices(data);
         setLoadError('');
@@ -173,7 +253,7 @@ export default function ServicesPage() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [isAdmin]);
+  }, [hasServicesManage, activeOrganization?.id]);
 
   // Enrichment of 24h metrics
   useEffect(() => {
@@ -280,7 +360,7 @@ export default function ServicesPage() {
 
     try {
       setSubmitting(true);
-      if (isAdmin) {
+      if (hasServicesManage) {
         await apiService.createService({
           name: createForm.name.trim(),
           description: createForm.description.trim()
@@ -451,7 +531,7 @@ export default function ServicesPage() {
           </button>
         </div>
         <div>
-          {isAdmin ? (
+          {hasServicesManage ? (
             <button
               className="btn"
               style={{ background: 'var(--accent)', color: '#fff', border: 'none', height: '28px', padding: '0 12px', fontSize: '0.75rem' }}
@@ -585,7 +665,7 @@ export default function ServicesPage() {
                   title="No services created"
                   description="Register your first system service component."
                   icon="🔑"
-                  action={isAdmin ? { label: 'Register Service', onClick: () => setShowCreateModal(true) } : undefined}
+                  action={hasServicesManage ? { label: 'Register Service', onClick: () => setShowCreateModal(true) } : undefined}
                 />
               ) : (
                 <div className="obs-table-workspace-panel">
@@ -596,7 +676,7 @@ export default function ServicesPage() {
                           <th className="services-cell-name">Service Name</th>
                           <th className="services-cell-description">Description</th>
                           <th className="services-cell-status">Owners Assignment (Select Primary)</th>
-                          {isAdmin && <th className="services-cell-actions" style={{ textAlign: 'right' }}>Actions</th>}
+                          {hasServicesManage && <th className="services-cell-actions" style={{ textAlign: 'right' }}>Actions</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -614,13 +694,13 @@ export default function ServicesPage() {
                                     <label
                                       key={owner.userId}
                                       className={`service-owner-item ${owner.primary ? 'primary-owner' : ''} ${
-                                        isAdmin ? 'owner-editable' : ''
+                                        hasServicesManage ? 'owner-editable' : ''
                                       }`}
                                       style={{
                                         display: 'inline-flex',
                                         alignItems: 'center',
                                         gap: '6px',
-                                        cursor: isAdmin ? 'pointer' : 'default',
+                                        cursor: hasServicesManage ? 'pointer' : 'default',
                                         padding: '4px 8px',
                                         background: owner.primary ? 'rgba(59, 130, 246, 0.12)' : 'var(--surface-raised)',
                                         border: owner.primary ? '1px solid var(--accent)' : '1px solid var(--border)',
@@ -633,7 +713,7 @@ export default function ServicesPage() {
                                         className="service-owner-radio"
                                         name={`primary-owner-${service.name}`}
                                         checked={owner.primary}
-                                        disabled={submitting || !isAdmin}
+                                        disabled={submitting || !hasServicesManage}
                                         onChange={() => void handleSetPrimaryOwner(service.name, owner.userId)}
                                         style={{ margin: 0 }}
                                       />
@@ -649,7 +729,7 @@ export default function ServicesPage() {
                                   )}
                                 </div>
                               </td>
-                              {isAdmin && (
+                              {hasServicesManage && (
                                 <td className="services-cell-actions" style={{ textAlign: 'right', verticalAlign: 'top' }}>
                                   <div style={{ display: 'inline-flex', gap: '6px' }}>
                                     <button
@@ -703,13 +783,13 @@ export default function ServicesPage() {
                 ) : (
                   <div className="obs-table-workspace-panel">
                     <div className="table-scroll-area">
-                      <table className={`log-table ${isAdmin ? 'requests-pending-table is-admin' : 'requests-table'}`} style={{ width: '100%' }}>
+                      <table className={`log-table ${hasServicesManage ? 'requests-pending-table is-admin' : 'requests-table'}`} style={{ width: '100%' }}>
                         <thead>
                           <tr>
                             <th>Service</th>
                             <th>Requested By</th>
                             <th>Reason / Description</th>
-                            {isAdmin && <th style={{ textAlign: 'right' }}>Actions</th>}
+                            {hasServicesManage && <th style={{ textAlign: 'right' }}>Actions</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -718,7 +798,7 @@ export default function ServicesPage() {
                               <td style={{ fontWeight: 600, fontFamily: 'var(--font-mono)' }}>{req.serviceName}</td>
                               <td>{req.requestedByEmail}</td>
                               <td>{req.description || 'No reason provided.'}</td>
-                              {isAdmin && (
+                              {hasServicesManage && (
                                 <td style={{ textAlign: 'right' }}>
                                   <div style={{ display: 'inline-flex', gap: '6px' }}>
                                     <button
@@ -843,6 +923,95 @@ export default function ServicesPage() {
                 </div>
               </div>
 
+              {/* Credentials */}
+              {hasApiKeysManage && selectedService.id && (
+                <div className="obs-drawer-section">
+                  <span className="obs-drawer-section-title">Credentials</span>
+                  
+                  {/* API Key */}
+                  <div className="obs-drawer-item" style={{ marginBottom: '12px' }}>
+                    <span className="obs-drawer-label">API Key</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                      <input
+                        type={revealedKey ? 'text' : 'password'}
+                        className="form-control"
+                        style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', flexGrow: 1, padding: '4px 8px', background: 'var(--surface-raised)', border: '1px solid var(--border)', height: '28px', color: 'var(--text-primary)' }}
+                        value={revealedKey ? apiKey : '••••••••••••••••••••••••••••••••'}
+                        readOnly
+                      />
+                      <button
+                        className="btn"
+                        style={{ padding: '0 8px', height: '28px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        onClick={revealedKey ? () => setRevealedKey(false) : () => void handleRevealApiKey()}
+                      >
+                        {revealedKey ? 'Hide' : 'Reveal'}
+                      </button>
+                      {revealedKey && (
+                        <button
+                          className="btn"
+                          style={{ padding: '0 8px', height: '28px', fontSize: '0.72rem' }}
+                          onClick={() => {
+                            void navigator.clipboard.writeText(apiKey);
+                            alert('API Key copied to clipboard!');
+                          }}
+                        >
+                          Copy
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-danger"
+                        style={{ padding: '0 8px', height: '28px', fontSize: '0.72rem' }}
+                        onClick={() => void handleRegenerateApiKey()}
+                        disabled={submitting}
+                      >
+                        Regen
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Service Secret */}
+                  <div className="obs-drawer-item">
+                    <span className="obs-drawer-label">Service Secret</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                      <input
+                        type={revealedSecret ? 'text' : 'password'}
+                        className="form-control"
+                        style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', flexGrow: 1, padding: '4px 8px', background: 'var(--surface-raised)', border: '1px solid var(--border)', height: '28px', color: 'var(--text-primary)' }}
+                        value={revealedSecret ? serviceSecret : '••••••••••••••••••••••••••••••••'}
+                        readOnly
+                      />
+                      <button
+                        className="btn"
+                        style={{ padding: '0 8px', height: '28px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        onClick={revealedSecret ? () => setRevealedSecret(false) : () => void handleRevealServiceSecret()}
+                      >
+                        {revealedSecret ? 'Hide' : 'Reveal'}
+                      </button>
+                      {revealedSecret && (
+                        <button
+                          className="btn"
+                          style={{ padding: '0 8px', height: '28px', fontSize: '0.72rem' }}
+                          onClick={() => {
+                            void navigator.clipboard.writeText(serviceSecret);
+                            alert('Service Secret copied to clipboard!');
+                          }}
+                        >
+                          Copy
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-danger"
+                        style={{ padding: '0 8px', height: '28px', fontSize: '0.72rem' }}
+                        onClick={() => void handleRegenerateServiceSecret()}
+                        disabled={submitting}
+                      >
+                        Regen
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Telemetry Metrics */}
               <div className="obs-drawer-section">
                 <span className="obs-drawer-section-title">Health Metrics (24h)</span>
@@ -938,7 +1107,7 @@ export default function ServicesPage() {
       {/* CREATE SERVICE / REQUEST ACCESS MODAL */}
       <Modal
         open={showCreateModal}
-        title={isAdmin ? 'Add New Service' : 'Request Access to Service'}
+        title={hasServicesManage ? 'Add New Service' : 'Request Access to Service'}
         onClose={() => {
           setShowCreateModal(false);
           setCreateForm(emptyServiceForm);
@@ -978,7 +1147,7 @@ export default function ServicesPage() {
               disabled={submitting}
               onClick={() => void createService()}
             >
-              {submitting ? 'Saving...' : (isAdmin ? 'Create Service' : 'Submit Request')}
+              {submitting ? 'Saving...' : (hasServicesManage ? 'Create Service' : 'Submit Request')}
             </button>
           </div>
         </div>

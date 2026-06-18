@@ -8,15 +8,19 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import com.kovanlabs.servicemanagementservice.service.OrganizationService.OrganizationMember;
+import com.kovanlabs.servicemanagementservice.service.OrganizationService.JoinRequestView;
 
 import com.kovanlabs.servicemanagementservice.dto.auth.AuthResponse;
 import com.kovanlabs.servicemanagementservice.model.Organization;
@@ -39,6 +43,8 @@ public class OrganizationController {
     public record SwitchOrgRequest(String organizationId) {}
     public record InviteUserRequest(String organizationId, String email) {}
     public record CreateApiKeyRequest(String organizationId, String name) {}
+    public record UpdateOrgRequest(String name) {}
+    public record TransferOwnershipRequest(String targetUserId) {}
 
     @PostMapping
     public ResponseEntity<Organization> createOrganization(
@@ -133,6 +139,78 @@ public class OrganizationController {
         String email = getEmail(proxiedUserEmail, principal);
         UUID orgId = UUID.fromString(organizationId);
         return ResponseEntity.ok(organizationService.listApiKeys(orgId, email));
+    }
+
+    @GetMapping
+    public ResponseEntity<List<Organization>> getUserOrganizations(
+            @RequestHeader(value = "X-User-Email", required = false) String proxiedUserEmail,
+            Principal principal) {
+        String email = getEmail(proxiedUserEmail, principal);
+        return ResponseEntity.ok(organizationService.getUserOrganizations(email));
+    }
+
+    @GetMapping("/{orgId}")
+    public ResponseEntity<Organization> getOrganizationDetails(
+            @RequestHeader(value = "X-User-Email", required = false) String proxiedUserEmail,
+            Principal principal,
+            @PathVariable("orgId") String orgIdStr) {
+        String email = getEmail(proxiedUserEmail, principal);
+        UUID orgId = UUID.fromString(orgIdStr);
+        return ResponseEntity.ok(organizationService.getOrganizationDetails(orgId, email));
+    }
+
+    @PutMapping("/{orgId}")
+    public ResponseEntity<Organization> updateOrganization(
+            @RequestHeader(value = "X-User-Email", required = false) String proxiedUserEmail,
+            Principal principal,
+            @PathVariable("orgId") String orgIdStr,
+            @RequestBody UpdateOrgRequest request) {
+        String email = getEmail(proxiedUserEmail, principal);
+        UUID orgId = UUID.fromString(orgIdStr);
+        return ResponseEntity.ok(organizationService.updateOrganization(orgId, request.name(), email));
+    }
+
+    @DeleteMapping("/{orgId}")
+    public ResponseEntity<Void> deleteOrganization(
+            @RequestHeader(value = "X-User-Email", required = false) String proxiedUserEmail,
+            Principal principal,
+            @PathVariable("orgId") String orgIdStr) {
+        String email = getEmail(proxiedUserEmail, principal);
+        UUID orgId = UUID.fromString(orgIdStr);
+        organizationService.deleteOrganization(orgId, email);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{orgId}/members")
+    public ResponseEntity<List<OrganizationMember>> getOrganizationMembers(
+            @RequestHeader(value = "X-User-Email", required = false) String proxiedUserEmail,
+            Principal principal,
+            @PathVariable("orgId") String orgIdStr) {
+        String email = getEmail(proxiedUserEmail, principal);
+        UUID orgId = UUID.fromString(orgIdStr);
+        return ResponseEntity.ok(organizationService.getOrganizationMembers(orgId, email));
+    }
+
+    @GetMapping("/{orgId}/join-requests")
+    public ResponseEntity<List<JoinRequestView>> getJoinRequests(
+            @RequestHeader(value = "X-User-Email", required = false) String proxiedUserEmail,
+            Principal principal,
+            @PathVariable("orgId") String orgIdStr) {
+        String email = getEmail(proxiedUserEmail, principal);
+        UUID orgId = UUID.fromString(orgIdStr);
+        return ResponseEntity.ok(organizationService.getJoinRequests(orgId, email));
+    }
+
+    @PostMapping("/{orgId}/transfer-ownership")
+    public ResponseEntity<Void> transferOwnership(
+            @RequestHeader(value = "X-User-Email", required = false) String proxiedUserEmail,
+            Principal principal,
+            @PathVariable("orgId") String orgIdStr,
+            @RequestBody TransferOwnershipRequest request) {
+        String email = getEmail(proxiedUserEmail, principal);
+        UUID orgId = UUID.fromString(orgIdStr);
+        organizationService.transferOwnership(orgId, request.targetUserId(), email);
+        return ResponseEntity.ok().build();
     }
 
     private String getEmail(String headerEmail, Principal principal) {

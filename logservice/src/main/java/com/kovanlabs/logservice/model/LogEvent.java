@@ -7,10 +7,8 @@ import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
-<<<<<<< HEAD
-=======
+
 import java.util.List;
->>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
 @Document(collection = "logs")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -134,14 +132,13 @@ public class LogEvent {
         this.caller.setLineNumber(lineNumber);
     }
 
-<<<<<<< HEAD
     public String getOrganizationId() {
         return organizationId;
     }
 
     public void setOrganizationId(String organizationId) {
         this.organizationId = organizationId;
-=======
+
     public String getErrorType() {
         return errorType;
     }
@@ -204,6 +201,5 @@ public class LogEvent {
 
     public void setSuggestionSource(String suggestionSource) {
         this.suggestionSource = suggestionSource;
->>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
     }
 }

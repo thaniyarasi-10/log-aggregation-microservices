@@ -2,9 +2,11 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { apiService } from '../services/api';
+import { useOrganization } from '../context/OrganizationContext';
+import { apiService, extractApiErrorMessage } from '../services/api';
 import type { AlertItem } from '../types';
 import NotificationSettings from './NotificationSettings';
+import Modal from './Modal';
 
 const getClassName = ({ isActive }: { isActive: boolean }) =>
   isActive ? 'header-nav-link active' : 'header-nav-link';
@@ -31,16 +33,6 @@ function SunIcon() {
       <line x1="21" y1="12" x2="23" y2="12" />
       <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
       <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-    </svg>
-  );
-}
-
-// ── Bell icon SVG
-function BellIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
     </svg>
   );
 }
@@ -123,16 +115,26 @@ function SettingsIcon() {
 }
 
 export default function Navbar() {
-  const { user, role, isAdmin, isDev, canAccessUsers, canAccessServices, logout, refreshSession } = useAuth();
+  const { user, isAdmin, isDev, canAccessUsers, canAccessServices, logout, refreshSession } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { activeOrganization, organizations, currentRole, switchOrg, createOrg } = useOrganization();
 
-  const [profileOpen, setProfileOpen]   = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [notifPanelOpen, setNotifPanelOpen] = useState(false);
+  const [orgSwitcherOpen, setOrgSwitcherOpen] = useState(false);
+  
+  // Organization Creation Modal States
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createType, setCreateType] = useState<'BUSINESS' | 'PERSONAL'>('BUSINESS');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const profileRef = useRef<HTMLDivElement>(null);
+  const orgRef = useRef<HTMLDivElement>(null);
 
   const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -146,16 +148,7 @@ export default function Navbar() {
       await refreshSession();
     } catch (err) {
       console.error('Failed to upload image:', err);
-      let errMsg = 'Failed to upload profile image';
-      if (err instanceof Error) {
-        const axiosErr = err as any;
-        if (axiosErr.response?.data?.message) {
-          errMsg = axiosErr.response.data.message;
-        } else if (axiosErr.message) {
-          errMsg = axiosErr.message;
-        }
-      }
-      setUploadError(errMsg);
+      setUploadError(extractApiErrorMessage(err, 'Failed to upload profile image'));
     } finally {
       setUploading(false);
     }
@@ -167,22 +160,124 @@ export default function Navbar() {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
       }
+      if (orgRef.current && !orgRef.current.contains(e.target as Node)) {
+        setOrgSwitcherOpen(false);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-
-
   const displayName = user?.name || user?.email || 'User';
-  const displayRole = role || 'User';
+  const displayRole = currentRole || 'DEV';
 
   return (
     <>
       <header className="glass-panel dashboard-header">
-        <div className="header-logo">
+        <div className="header-logo" style={{ display: 'flex', alignItems: 'center' }}>
           <span className="logo-icon">◷</span>
           <h1 className="header-title">LogFlow Observability</h1>
+
+          {/* Global Organization Switcher */}
+          {activeOrganization && (
+            <div className="org-switcher-container" ref={orgRef} style={{ position: 'relative', marginLeft: '24px' }}>
+              <button
+                onClick={() => setOrgSwitcherOpen(!orgSwitcherOpen)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '6px 12px',
+                  backgroundColor: 'var(--card-bg, #1e293b)',
+                  border: '1px solid var(--border-color, #334155)',
+                  borderRadius: '6px',
+                  color: 'var(--text-color, #ffffff)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  transition: 'border-color 0.2s'
+                }}
+              >
+                <span>🏢 {activeOrganization.name}</span>
+                <span style={{ fontSize: '0.65rem', color: 'var(--text-dim, #94a3b8)' }}>▼</span>
+              </button>
+
+              {orgSwitcherOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    marginTop: '8px',
+                    width: '240px',
+                    backgroundColor: 'var(--card-bg, #1e293b)',
+                    border: '1px solid var(--border-color, #334155)',
+                    borderRadius: '8px',
+                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
+                    zIndex: 100,
+                    padding: '8px 0'
+                  }}
+                >
+                  <div style={{ padding: '4px 12px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-dim, #94a3b8)', textTransform: 'uppercase', borderBottom: '1px solid var(--border-color, #334155)', paddingBottom: '6px', marginBottom: '4px' }}>
+                    Switch Organization
+                  </div>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: '200px', overflowY: 'auto' }}>
+                    {organizations.map((org) => (
+                      <li key={org.id}>
+                        <button
+                          onClick={async () => {
+                            setOrgSwitcherOpen(false);
+                            await switchOrg(org.id);
+                          }}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '8px 12px',
+                            background: 'none',
+                            border: 'none',
+                            color: org.id === activeOrganization.id ? 'var(--accent, #3b82f6)' : 'var(--text-color, #ffffff)',
+                            fontWeight: org.id === activeOrganization.id ? 700 : 500,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            fontSize: '0.85rem'
+                          }}
+                        >
+                          <span>{org.name}</span>
+                          {org.id === activeOrganization.id && <span style={{ fontSize: '0.75rem' }}>✓</span>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{ borderTop: '1px solid var(--border-color, #334155)', marginTop: '4px', paddingTop: '4px' }} />
+                  <button
+                    onClick={() => {
+                      setOrgSwitcherOpen(false);
+                      setShowCreateModal(true);
+                    }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 12px',
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--accent, #3b82f6)',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <span>➕ Create Organization</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="header-actions">
@@ -204,7 +299,6 @@ export default function Navbar() {
           >
             {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
-          {/* Notification bell removed */}
         </div>
       </header>
 
@@ -261,8 +355,39 @@ export default function Navbar() {
               {user?.email && user.email !== displayName && (
                 <div className="header-profile-email">{user.email}</div>
               )}
-              <div className="header-profile-role">{displayRole}</div>
+              {activeOrganization && (
+                <div className="header-profile-role" style={{ color: 'var(--accent, #3b82f6)', fontWeight: 600, fontSize: '0.75rem', marginTop: '4px' }}>
+                  🏢 {activeOrganization.name} ({displayRole})
+                </div>
+              )}
             </div>
+            <div className="header-dropdown-divider" />
+            <NavLink
+              to="/organization/settings"
+              className="header-profile-action"
+              onClick={() => setProfileOpen(false)}
+              style={{ textDecoration: 'none', display: 'block' }}
+            >
+              ⚙️ Organization Settings
+            </NavLink>
+            <NavLink
+              to="/organization/members"
+              className="header-profile-action"
+              onClick={() => setProfileOpen(false)}
+              style={{ textDecoration: 'none', display: 'block' }}
+            >
+              👥 Members
+            </NavLink>
+            {(currentRole === 'OWNER' || currentRole === 'ADMIN') && (
+              <NavLink
+                to="/organization/join-requests"
+                className="header-profile-action"
+                onClick={() => setProfileOpen(false)}
+                style={{ textDecoration: 'none', display: 'block' }}
+              >
+                📥 Join Requests
+              </NavLink>
+            )}
             <div className="header-dropdown-divider" />
             <button
               className="header-profile-action"
@@ -306,6 +431,65 @@ export default function Navbar() {
           </>
         )}
       </div>
+
+      {/* Create Org Modal */}
+      <Modal
+        open={showCreateModal}
+        title="Create New Organization"
+        onClose={() => { setShowCreateModal(false); setCreateName(''); setCreateError(''); }}
+      >
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          if (!createName.trim()) return;
+          setCreating(true);
+          setCreateError('');
+          try {
+            await createOrg(createName, createType);
+            setShowCreateModal(false);
+            setCreateName('');
+          } catch (err) {
+            setCreateError(extractApiErrorMessage(err, 'Failed to create organization. Note: business domains require non-personal email.'));
+          } finally {
+            setCreating(false);
+          }
+        }}>
+          {createError && (
+            <div style={{ color: '#f87171', backgroundColor: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', padding: '8px 12px', borderRadius: '4px', marginBottom: '12px', fontSize: '0.8rem' }}>
+              {createError}
+            </div>
+          )}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '4px' }}>ORGANIZATION NAME</label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="e.g. Acme Corp"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              required
+              style={{ width: '100%', padding: '8px', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '4px' }}>ORGANIZATION TYPE</label>
+            <select
+              className="form-control"
+              value={createType}
+              onChange={(e) => setCreateType(e.target.value as 'BUSINESS' | 'PERSONAL')}
+              style={{ width: '100%', padding: '8px' }}
+            >
+              <option value="BUSINESS">Business (Domain derived from email)</option>
+              <option value="PERSONAL">Personal Workspace</option>
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn" onClick={() => setShowCreateModal(false)} style={{ background: 'none', border: '1px solid var(--border-color)', color: 'var(--text-color)' }}>Cancel</button>
+            <button type="submit" className="btn btn-primary" style={{ background: 'var(--accent)', color: '#fff', border: 'none' }} disabled={creating}>
+              {creating ? 'Creating...' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </>
   );
 }

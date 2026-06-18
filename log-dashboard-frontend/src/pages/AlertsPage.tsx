@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { apiService } from '../services/api';
+import { useOrganization } from '../context/OrganizationContext';
 import { PageHeader, StatusBadge, EmptyState } from '../components/UI';
 import type { AlertItem, UserJiraMapping, ServiceRecord } from '../types';
 
@@ -31,6 +32,7 @@ export function ServerIcon() {
 }
 
 export default function AlertsPage() {
+  const { activeOrganization } = useOrganization();
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [services, setServices] = useState<ServiceRecord[]>([]);
   const [mappings, setMappings] = useState<UserJiraMapping[]>([]);
@@ -80,7 +82,7 @@ export default function AlertsPage() {
 
   useEffect(() => {
     void loadAlertsData();
-  }, []);
+  }, [activeOrganization?.id]);
 
   // Compute Assignee and Jira status details based on service ownership and mapping
   const alertsWithJira = useMemo(() => {
@@ -263,9 +265,16 @@ export default function AlertsPage() {
             />
           ) : (
             <div className="table-scroll-area">
+              <table className="log-table alerts-table" style={{ width: '100%' }}>
                 <thead>
                   <tr>
-                    <th>Alert Message</th>
+                    <th>Timestamp</th>
+                    <th>Service</th>
+                    <th>Severity</th>
+                    <th>Message</th>
+                    <th>Jira Ticket</th>
+                    <th>Assignee</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -284,7 +293,8 @@ export default function AlertsPage() {
                             {item.severity}
                           </span>
                         </td>
-                            {item.message}
+                        <td>
+                          {item.message}
                         </td>
                         <td>
                           {hasTicket ? (

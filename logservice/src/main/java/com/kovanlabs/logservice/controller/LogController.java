@@ -120,9 +120,7 @@ public class LogController {
                 List.of(),
                 organizationId
         );
-=======
         AuthenticatedUserContext context = buildAccessContext(userEmail, userRole, userServices);
->>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 
         List<LogEvent> results = elasticRepository.searchMulti(
                 resolvedServices,

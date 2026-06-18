@@ -17,15 +17,12 @@ import com.kovanlabs.servicemanagementservice.dto.ServiceRequestCreateRequest;
 import com.kovanlabs.servicemanagementservice.dto.ServiceRequestView;
 import com.kovanlabs.servicemanagementservice.dto.ServiceSummaryView;
 import com.kovanlabs.servicemanagementservice.dto.ServiceHealthView;
-<<<<<<< HEAD
 import com.kovanlabs.servicemanagementservice.dto.ServiceVerifyRequest;
 import com.kovanlabs.servicemanagementservice.dto.ServiceSecretRegenerateResponse;
 import com.kovanlabs.servicemanagementservice.dto.ServiceSecretResponse;
 import com.kovanlabs.servicemanagementservice.dto.ServiceApiKeyResponse;
 import com.kovanlabs.servicemanagementservice.dto.ServiceApiKeyRegenerateResponse;
 import com.kovanlabs.servicemanagementservice.model.AppService;
-=======
->>>>>>> 6a01b900be15a6a689e602f89925f0c54101ef47
 import com.kovanlabs.servicemanagementservice.service.ServiceRequestWorkflowService;
 import com.kovanlabs.servicemanagementservice.service.ServiceHealthService;
 
@@ -60,13 +57,13 @@ public class ServiceManagementController {
         return ResponseEntity.ok(healthService.getServicesHealth(orgId, userEmail, userRole));
     }
 
-    @GetMapping("/health")
+    @GetMapping("/actuator/health")
     public ResponseEntity<List<ServiceHealthView>> getServicesHealth() {
         return ResponseEntity.ok(healthService.getServicesHealth());
-    }
+    }]
 
     @GetMapping("/details")
-    public ResponseEntity<List<ServiceSummaryView>> details(
+    public ResponseEntity<List<ServiceSummaryView>> detailCs(
             @RequestHeader(value = "X-Organization-Id") String orgIdStr,
             @RequestHeader(value = "X-User-Email", required = false) String userEmail,
             @RequestHeader(value = "X-User-Role", required = false) String userRole) {

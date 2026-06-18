@@ -123,7 +123,7 @@ public class ServiceRequestWorkflowService {
         Optional<AppUser> oUser = appUserRepository.findByEmailIgnoreCaseAndActiveTrue(userEmail == null ? "" : userEmail.trim());
         if (oUser.isPresent()) {
             isAdmin = userRoleMappingRepository.findByUser_IdAndOrganization_Id(oUser.get().getId(), organizationId).stream()
-                    .anyMatch(rm -> "ADMIN".equalsIgnoreCase(rm.getRole().getName()));
+                    .anyMatch(rm -> "ADMIN".equalsIgnoreCase(rm.getRole().getName()) || "OWNER".equalsIgnoreCase(rm.getRole().getName()));
         }
 
         List<AppService> services;
@@ -301,7 +301,7 @@ public class ServiceRequestWorkflowService {
         AppUser user = oUser.get();
 
         boolean isAdmin = userRoleMappingRepository.findByUser_IdAndOrganization_Id(user.getId(), organizationId).stream()
-                .anyMatch(rm -> "ADMIN".equalsIgnoreCase(rm.getRole().getName()));
+                .anyMatch(rm -> "ADMIN".equalsIgnoreCase(rm.getRole().getName()) || "OWNER".equalsIgnoreCase(rm.getRole().getName()));
 
         if (isAdmin) {
             return true;

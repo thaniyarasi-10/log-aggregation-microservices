@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useRealtimeLogs } from '../hooks/useRealtimeLogs';
 import { useAuth } from '../context/AuthContext';
+import { useOrganization } from '../context/OrganizationContext';
 import { apiService } from '../services/api';
 import { PageHeader, FilterToolbar, StatusBadge, EmptyState } from '../components/UI';
 import type { LogEvent, LogFilters } from '../types';
@@ -21,6 +22,7 @@ export function ServerIcon() {
 
 export default function LogExplorerPage() {
   const { user, isAdmin } = useAuth();
+  const { activeOrganization } = useOrganization();
   const location = useLocation();
 
   // Parse query params (e.g. search from Ctrl+K, or redirection from dashboard)
@@ -86,7 +88,7 @@ export default function LogExplorerPage() {
     };
     void loadServices();
     return () => { active = false; };
-  }, [allowedServices, isAdmin]);
+  }, [allowedServices, isAdmin, activeOrganization?.id]);
 
   // Sync filters if URL query params change
   useEffect(() => {

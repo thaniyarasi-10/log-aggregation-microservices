@@ -10,6 +10,8 @@ type AuthContextValue = {
   role: string;
   isAdmin: boolean;
   isDev: boolean;
+  permissions: string[];
+  hasPermission: (permissionName: string) => boolean;
   canAccessUsers: boolean;
   canAccessServices: boolean;
   login: () => void;
@@ -56,7 +58,8 @@ function normalizeAuthPayload(payload: any): AuthUser {
       : (Array.isArray(payload.allowedServices) ? payload.allowedServices : services),
     canManageUsers: Boolean(payload.canManageUsers) || isAdmin,
     canManageServices: Boolean(payload.canManageServices) || isAdmin,
-    profileImageUrl
+    profileImageUrl,
+    activeOrganizationId: payload.activeOrganizationId || ''
   };
 }
 
@@ -108,10 +111,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshSession]);
 
   const role = String(user?.role || '').toUpperCase();
-  const isAdmin = role.includes('ADMIN') || Boolean(user?.canManageUsers) || Boolean(user?.canManageServices);
+  const isAdmin = role.includes('ADMIN') || role.includes('OWNER') || Boolean(user?.canManageUsers) || Boolean(user?.canManageServices);
   const isDev = role.includes('DEV') || (!isAdmin && status === 'authenticated');
-  const permissions = Array.isArray(user?.permissions) ? user.permissions.map((item) => String(item).toLowerCase()) : [];
+  const permissions = useMemo(() => {
+    return Array.isArray(user?.permissions) ? user.permissions.map((item) => String(item).toLowerCase()) : [];
+  }, [user]);
   const canReadServices = permissions.includes('services:read') || permissions.includes('logs:read');
+
+  const hasPermission = useCallback((permissionName: string) => {
+    return permissions.includes(permissionName.toLowerCase());
+  }, [permissions]);
 
   const value = useMemo<AuthContextValue>(() => ({
     status,
@@ -119,12 +128,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     role,
     isAdmin,
     isDev,
-    canAccessUsers: isAdmin || Boolean(user?.canManageUsers),
-    canAccessServices: isAdmin || Boolean(user?.canManageServices) || canReadServices,
+    permissions,
+    hasPermission,
+    canAccessUsers: isAdmin || Boolean(user?.canManageUsers) || hasPermission('users:manage'),
+    canAccessServices: isAdmin || Boolean(user?.canManageServices) || canReadServices || hasPermission('services:manage'),
     login,
     refreshSession,
     logout
-  }), [status, user, role, isAdmin, isDev, canReadServices, login, refreshSession, logout]);
+  }), [status, user, role, isAdmin, isDev, permissions, hasPermission, canReadServices, login, refreshSession, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

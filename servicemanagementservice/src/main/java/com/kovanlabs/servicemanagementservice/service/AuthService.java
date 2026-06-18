@@ -161,7 +161,7 @@ public class AuthService {
                 mapping.setUpdatedAt(LocalDateTime.now());
                 userOrganizationMappingRepository.save(mapping);
 
-                assignRoleToUserInOrg(user, savedOrg, "ADMIN");
+                assignRoleToUserInOrg(user, savedOrg, "OWNER");
                 return savedOrg;
             }
         } else {
@@ -182,7 +182,7 @@ public class AuthService {
             mapping.setUpdatedAt(LocalDateTime.now());
             userOrganizationMappingRepository.save(mapping);
 
-            assignRoleToUserInOrg(user, savedOrg, "ADMIN");
+            assignRoleToUserInOrg(user, savedOrg, "OWNER");
             return savedOrg;
         }
     }

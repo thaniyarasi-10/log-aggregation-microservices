@@ -153,6 +153,7 @@ export interface AuthUser {
   canManageUsers: boolean;
   canManageServices: boolean;
   profileImageUrl?: string;
+  activeOrganizationId?: string;
 }
 
 export type AgentMode = 'qa' | 'summary';
@@ -221,4 +222,39 @@ export interface UserJiraMapping {
 export interface JiraUser {
   accountId: string;
   displayName: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  domain: string | null;
+  organizationType: 'BUSINESS' | 'PERSONAL';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrganizationMember {
+  userId: string;
+  username: string;
+  email: string;
+  role: string;
+  status: 'ACTIVE' | 'INVITED' | 'PENDING';
+}
+
+export interface JoinRequest {
+  id: string;
+  username: string;
+  email: string;
+  requestedAt: string;
+}
+
+export interface OrganizationContextValue {
+  activeOrganization: Organization | null;
+  organizations: Organization[];
+  currentRole: string;
+  permissions: string[];
+  isLoading: boolean;
+  switchOrg: (orgId: string) => Promise<void>;
+  createOrg: (name: string, type: 'BUSINESS' | 'PERSONAL') => Promise<Organization>;
+  refreshOrgs: () => Promise<void>;
 }

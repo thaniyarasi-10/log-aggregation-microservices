@@ -32,6 +32,7 @@ import com.kovanlabs.servicemanagementservice.repository.OrganizationInviteRepos
 import com.kovanlabs.servicemanagementservice.repository.OrganizationJoinRequestRepository;
 import com.kovanlabs.servicemanagementservice.repository.OrganizationApiKeyRepository;
 import com.kovanlabs.servicemanagementservice.repository.UserRoleMappingRepository;
+import com.kovanlabs.servicemanagementservice.repository.AppServiceRepository;
 
 @Service
 public class OrganizationService {
@@ -45,6 +46,7 @@ public class OrganizationService {
     private final AppUserRepository appUserRepository;
     private final AppRoleRepository appRoleRepository;
     private final AuthService authService;
+    private final AppServiceRepository appServiceRepository;
 
     public OrganizationService(
             OrganizationRepository organizationRepository,
@@ -55,7 +57,8 @@ public class OrganizationService {
             UserRoleMappingRepository userRoleMappingRepository,
             AppUserRepository appUserRepository,
             AppRoleRepository appRoleRepository,
-            AuthService authService) {
+            AuthService authService,
+            AppServiceRepository appServiceRepository) {
         this.organizationRepository = organizationRepository;
         this.userOrganizationMappingRepository = userOrganizationMappingRepository;
         this.organizationInviteRepository = organizationInviteRepository;
@@ -65,6 +68,7 @@ public class OrganizationService {
         this.appUserRepository = appUserRepository;
         this.appRoleRepository = appRoleRepository;
         this.authService = authService;
+        this.appServiceRepository = appServiceRepository;
     }
 
     @Transactional
@@ -79,7 +83,16 @@ public class OrganizationService {
 
         Organization org = new Organization();
         org.setName(name == null || name.isBlank() ? "New Workspace" : name.trim());
-        org.setDomain(null);
+        
+        String domain = null;
+        if ("BUSINESS".equals(orgType)) {
+            int atIndex = userEmail.indexOf('@');
+            domain = atIndex > 0 ? userEmail.substring(atIndex + 1).toLowerCase(Locale.ROOT) : null;
+            if (domain != null && isPersonalDomain(domain)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot create a business organization using a personal email domain: " + domain);
+            }
+        }
+        org.setDomain(domain);
         org.setOrganizationType(orgType);
         org.setCreatedAt(LocalDateTime.now());
         org.setUpdatedAt(LocalDateTime.now());
@@ -93,7 +106,7 @@ public class OrganizationService {
         mapping.setUpdatedAt(LocalDateTime.now());
         userOrganizationMappingRepository.save(mapping);
 
-        assignRoleToUserInOrg(user, savedOrg, "ADMIN");
+        assignRoleToUserInOrg(user, savedOrg, "OWNER");
 
         return savedOrg;
     }
@@ -451,5 +464,171 @@ public class OrganizationService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 algorithm not found", e);
         }
+    }
+
+    // --- New Multi-Tenant Methods ---
+
+    private static final java.util.Set<String> PERSONAL_DOMAINS = java.util.Set.of(
+            "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com",
+            "aol.com", "live.com", "msn.com"
+    );
+
+    private boolean isPersonalDomain(String domain) {
+        if (domain == null) return true;
+        return PERSONAL_DOMAINS.contains(domain.trim().toLowerCase(Locale.ROOT));
+    }
+
+    @Transactional(readOnly = true)
+    public List<Organization> getUserOrganizations(String userEmail) {
+        AppUser user = appUserRepository.findByEmailIgnoreCaseAndActiveTrue(userEmail.trim().toLowerCase(Locale.ROOT))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authorized"));
+        List<UserOrganizationMapping> mappings = userOrganizationMappingRepository
+                .findByUser_IdAndStatus(user.getId(), "ACTIVE");
+        return mappings.stream().map(UserOrganizationMapping::getOrganization).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Organization getOrganizationDetails(UUID orgId, String userEmail) {
+        AppUser user = appUserRepository.findByEmailIgnoreCaseAndActiveTrue(userEmail.trim().toLowerCase(Locale.ROOT))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authorized"));
+        
+        userOrganizationMappingRepository.findByUser_IdAndOrganization_IdAndStatus(user.getId(), orgId, "ACTIVE")
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not an active member of this organization"));
+
+        return organizationRepository.findById(orgId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organization not found"));
+    }
+
+    @Transactional
+    public Organization updateOrganization(UUID orgId, String newName, String userEmail) {
+        AppUser user = appUserRepository.findByEmailIgnoreCaseAndActiveTrue(userEmail.trim().toLowerCase(Locale.ROOT))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authorized"));
+
+        boolean isAuthorized = userRoleMappingRepository.findByUser_IdAndOrganization_Id(user.getId(), orgId).stream()
+                .anyMatch(rm -> "ADMIN".equalsIgnoreCase(rm.getRole().getName()) || "OWNER".equalsIgnoreCase(rm.getRole().getName()));
+        if (!isAuthorized) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators or owners can edit organization details");
+        }
+
+        Organization org = organizationRepository.findById(orgId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organization not found"));
+
+        org.setName(newName == null || newName.isBlank() ? org.getName() : newName.trim());
+        org.setUpdatedAt(LocalDateTime.now());
+        return organizationRepository.save(org);
+    }
+
+    @Transactional
+    public void deleteOrganization(UUID orgId, String userEmail) {
+        AppUser user = appUserRepository.findByEmailIgnoreCaseAndActiveTrue(userEmail.trim().toLowerCase(Locale.ROOT))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authorized"));
+
+        boolean isOwner = userRoleMappingRepository.findByUser_IdAndOrganization_Id(user.getId(), orgId).stream()
+                .anyMatch(rm -> "OWNER".equalsIgnoreCase(rm.getRole().getName()));
+        if (!isOwner) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the owner can delete the organization");
+        }
+
+        Organization org = organizationRepository.findById(orgId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organization not found"));
+
+        userOrganizationMappingRepository.deleteAll(userOrganizationMappingRepository.findByOrganization_Id(orgId));
+        userRoleMappingRepository.deleteAll(userRoleMappingRepository.findAll().stream().filter(rm -> rm.getOrganization().getId().equals(orgId)).toList());
+        organizationInviteRepository.deleteAll(organizationInviteRepository.findAll().stream().filter(i -> i.getOrganization().getId().equals(orgId)).toList());
+        organizationJoinRequestRepository.deleteAll(organizationJoinRequestRepository.findAll().stream().filter(r -> r.getOrganization().getId().equals(orgId)).toList());
+        organizationApiKeyRepository.deleteAll(organizationApiKeyRepository.findByOrganization_Id(orgId));
+        appServiceRepository.deleteAll(appServiceRepository.findByOrganizationIdAndActiveTrueOrderByNameAsc(orgId));
+        organizationRepository.delete(org);
+    }
+
+    public record OrganizationMember(String userId, String username, String email, String role, String status) {}
+    public record JoinRequestView(String id, String username, String email, LocalDateTime requestedAt) {}
+
+    @Transactional(readOnly = true)
+    public List<OrganizationMember> getOrganizationMembers(UUID orgId, String userEmail) {
+        AppUser user = appUserRepository.findByEmailIgnoreCaseAndActiveTrue(userEmail.trim().toLowerCase(Locale.ROOT))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authorized"));
+
+        userOrganizationMappingRepository.findByUser_IdAndOrganization_IdAndStatus(user.getId(), orgId, "ACTIVE")
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not an active member of this organization"));
+
+        List<OrganizationMember> members = new ArrayList<>();
+
+        // 1. Active members
+        List<UserOrganizationMapping> activeMappings = userOrganizationMappingRepository.findByOrganization_IdAndStatus(orgId, "ACTIVE");
+        for (UserOrganizationMapping mapping : activeMappings) {
+            AppUser u = mapping.getUser();
+            List<UserRoleMapping> roleMappings = userRoleMappingRepository.findByUser_IdAndOrganization_Id(u.getId(), orgId);
+            String role = roleMappings.stream()
+                    .map(rm -> rm.getRole().getName().toUpperCase(Locale.ROOT))
+                    .findFirst()
+                    .orElse("DEV");
+            members.add(new OrganizationMember(u.getId(), u.getUsername(), u.getEmail(), role, "ACTIVE"));
+        }
+
+        // 2. Pending Invites
+        List<OrganizationInvite> invites = organizationInviteRepository.findAll().stream()
+                .filter(i -> i.getOrganization().getId().equals(orgId) && "INVITED".equalsIgnoreCase(i.getStatus()))
+                .toList();
+        for (OrganizationInvite invite : invites) {
+            members.add(new OrganizationMember(invite.getId().toString(), "", invite.getEmail(), "DEV", "INVITED"));
+        }
+
+        // 3. Pending Join Requests
+        List<OrganizationJoinRequest> joinRequests = organizationJoinRequestRepository.findAll().stream()
+                .filter(r -> r.getOrganization().getId().equals(orgId) && "PENDING".equalsIgnoreCase(r.getStatus()))
+                .toList();
+        for (OrganizationJoinRequest req : joinRequests) {
+            members.add(new OrganizationMember(req.getId().toString(), req.getUser().getUsername(), req.getUser().getEmail(), "DEV", "PENDING"));
+        }
+
+        return members;
+    }
+
+    @Transactional(readOnly = true)
+    public List<JoinRequestView> getJoinRequests(UUID orgId, String userEmail) {
+        AppUser user = appUserRepository.findByEmailIgnoreCaseAndActiveTrue(userEmail.trim().toLowerCase(Locale.ROOT))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authorized"));
+
+        boolean isAuthorized = userRoleMappingRepository.findByUser_IdAndOrganization_Id(user.getId(), orgId).stream()
+                .anyMatch(rm -> "ADMIN".equalsIgnoreCase(rm.getRole().getName()) || "OWNER".equalsIgnoreCase(rm.getRole().getName()));
+        if (!isAuthorized) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only administrators or owners can view join requests");
+        }
+
+        List<OrganizationJoinRequest> requests = organizationJoinRequestRepository.findAll().stream()
+                .filter(r -> r.getOrganization().getId().equals(orgId) && "PENDING".equalsIgnoreCase(r.getStatus()))
+                .toList();
+
+        return requests.stream()
+                .map(r -> new JoinRequestView(r.getId().toString(), r.getUser().getUsername(), r.getUser().getEmail(), r.getCreatedAt()))
+                .toList();
+    }
+
+    @Transactional
+    public void transferOwnership(UUID orgId, String targetUserId, String userEmail) {
+        AppUser actor = appUserRepository.findByEmailIgnoreCaseAndActiveTrue(userEmail.trim().toLowerCase(Locale.ROOT))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Actor not authorized"));
+
+        boolean isOwner = userRoleMappingRepository.findByUser_IdAndOrganization_Id(actor.getId(), orgId).stream()
+                .anyMatch(rm -> "OWNER".equalsIgnoreCase(rm.getRole().getName()));
+        if (!isOwner) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the current owner can transfer ownership");
+        }
+
+        AppUser targetUser = appUserRepository.findById(targetUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Target user not found"));
+
+        userOrganizationMappingRepository.findByUser_IdAndOrganization_IdAndStatus(targetUserId, orgId, "ACTIVE")
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Target user is not an active member of this organization"));
+
+        // Demote current owner to ADMIN
+        changeMemberRole(orgId, actor.getId(), "ADMIN", userEmail);
+
+        // Promote target to OWNER
+        List<UserRoleMapping> targetRoles = userRoleMappingRepository.findByUser_IdAndOrganization_Id(targetUserId, orgId);
+        userRoleMappingRepository.deleteAll(targetRoles);
+
+        assignRoleToUserInOrg(targetUser, organizationRepository.findById(orgId).get(), "OWNER");
     }
 }

@@ -17,7 +17,10 @@ import type {
   ServiceAccessRequest,
   ServiceRecord,
   ServiceHealth,
-  UserRecord
+  UserRecord,
+  Organization,
+  OrganizationMember,
+  JoinRequest
 } from '../types';
 import { buildLogQueryParams } from '../utils/time';
 
@@ -531,6 +534,16 @@ export const apiService = {
     return response.data;
   },
 
+  async getServiceApiKey(serviceId: string): Promise<{ serviceId: string; serviceName: string; apiKey: string }> {
+    const response = await api.get<{ serviceId: string; serviceName: string; apiKey: string }>(`/services/${serviceId}/api-key`);
+    return response.data;
+  },
+
+  async regenerateServiceApiKey(serviceId: string): Promise<{ serviceId: string; serviceName: string; apiKey: string }> {
+    const response = await api.post<{ serviceId: string; serviceName: string; apiKey: string }>(`/services/${serviceId}/regenerate-api-key`);
+    return response.data;
+  },
+
   async fetchSourceCode(
     service: string,
     className?: string,
@@ -583,6 +596,84 @@ export const apiService = {
       params: { windowMinutes }
     });
     return Array.isArray(data) ? data : [];
+  },
+
+  async getOrganizations(): Promise<Organization[]> {
+    const data = await getByPaths<Organization[]>(['/api/organizations', '/organizations']);
+    return Array.isArray(data) ? data : [];
+  },
+
+  async getOrganization(orgId: string): Promise<Organization> {
+    return getByPaths<Organization>([`/api/organizations/${orgId}`, `/organizations/${orgId}`]);
+  },
+
+  async updateOrganization(orgId: string, name: string): Promise<Organization> {
+    // The backend uses PUT /api/organizations/{orgId}
+    const token = localStorage.getItem('token');
+    const response = await api.put<Organization>(`/organizations/${orgId}`, { name }, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+  },
+
+  async deleteOrganization(orgId: string): Promise<void> {
+    const token = localStorage.getItem('token');
+    await api.delete(`/organizations/${orgId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  async getOrganizationMembers(orgId: string): Promise<OrganizationMember[]> {
+    const data = await getByPaths<OrganizationMember[]>([`/api/organizations/${orgId}/members`, `/organizations/${orgId}/members`]);
+    return Array.isArray(data) ? data : [];
+  },
+
+  async getJoinRequests(orgId: string): Promise<JoinRequest[]> {
+    const data = await getByPaths<JoinRequest[]>([`/api/organizations/${orgId}/join-requests`, `/organizations/${orgId}/join-requests`]);
+    return Array.isArray(data) ? data : [];
+  },
+
+  async approveJoinRequest(requestId: string): Promise<void> {
+    await postByPaths<void, void>([`/api/organizations/join-request/${requestId}/approve`, `/organizations/join-request/${requestId}/approve`], undefined);
+  },
+
+  async rejectJoinRequest(requestId: string): Promise<void> {
+    await postByPaths<void, void>([`/api/organizations/join-request/${requestId}/reject`, `/organizations/join-request/${requestId}/reject`], undefined);
+  },
+
+  async transferOwnership(orgId: string, targetUserId: string): Promise<void> {
+    const token = localStorage.getItem('token');
+    await api.post<void>(`/organizations/${orgId}/transfer-ownership`, { targetUserId }, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  },
+
+  async inviteUser(orgId: string, email: string): Promise<any> {
+    return postByPaths<any, { organizationId: string; email: string }>(['/api/organizations/invite', '/organizations/invite'], { organizationId: orgId, email });
+  },
+
+  async acceptInvite(inviteId: string): Promise<void> {
+    await postByPaths<void, void>(['/api/organizations/invite/accept'], undefined, { params: { inviteId } });
+  },
+
+  async removeMember(userId: string): Promise<void> {
+    await deleteByPaths([`/api/users/${userId}`, `/users/${userId}`]);
+  },
+
+  async promoteMember(userId: string): Promise<void> {
+    await postByPaths<void, void>([`/api/users/${userId}/promote`, `/users/${userId}/promote`], undefined);
+  },
+
+  async demoteMember(userId: string): Promise<void> {
+    await postByPaths<void, void>([`/api/users/${userId}/demote`, `/users/${userId}/demote`], undefined);
+  },
+
+  async createOrganization(name: string, type: 'BUSINESS' | 'PERSONAL'): Promise<Organization> {
+    return postByPaths<Organization, { name: string; type: string }>(['/api/organizations', '/organizations'], { name, type });
+  },
+
+  async switchOrganization(orgId: string): Promise<any> {
+    return postByPaths<any, { organizationId: string }>(['/api/organizations/switch', '/organizations/switch'], { organizationId: orgId });
   }
 };
 

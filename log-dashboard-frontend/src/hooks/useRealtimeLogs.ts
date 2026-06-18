@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiService, extractApiErrorMessage } from '../services/api';
+import { useOrganization } from '../context/OrganizationContext';
 import type { LogEvent, LogFilters } from '../types';
 import { RANGE_TO_MS } from '../utils/time';
 
@@ -33,6 +34,7 @@ export function useRealtimeLogs(
   allowedServices: string[] = [],
   isAdmin = false,
 ) {
+  const { activeOrganization } = useOrganization();
   const [logs, setLogs] = useState<LogEvent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
@@ -194,7 +196,7 @@ export function useRealtimeLogs(
       if (pollingTimer !== null) window.clearInterval(pollingTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, intervalMs]); // Filters intentionally excluded — handled via filtersRef
+  }, [enabled, intervalMs, activeOrganization?.id]); // Filters intentionally excluded — handled via filtersRef
 
   // ── Filter change: re-apply filters to existing logs and reset seen-keys ────
   // When filters change we don't reconnect the socket. Instead we:
@@ -233,7 +235,7 @@ export function useRealtimeLogs(
 
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey]);
+  }, [filterKey, activeOrganization?.id]);
 
   return { logs, loading, error };
 }
