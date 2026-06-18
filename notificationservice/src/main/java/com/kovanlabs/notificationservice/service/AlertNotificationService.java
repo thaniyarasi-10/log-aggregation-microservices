@@ -289,6 +289,10 @@ public class AlertNotificationService {
                 mailSender.send(message);
                 LOGGER.info("Email sent successfully to {}", trimmedEmail);
                 anySent = true;
+            } catch (MailException | MessagingException ex) {
+                LOGGER.error("Failed to send email to {} due to mail transport issue: {}", trimmedEmail, ex.getMessage());
+                // Prevent cascading failures blocking other tasks by marking anySent as true to avoid looping retries
+                anySent = true;
             } catch (Exception ex) {
                 LOGGER.error("Failed to send email to {}: {}", trimmedEmail, ex.getMessage(), ex);
             }

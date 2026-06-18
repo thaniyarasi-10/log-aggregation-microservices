@@ -37,10 +37,7 @@ public class AutoRepairController {
         this.autoRepairService = autoRepairService;
     }
 
-    /**
-     * POST /api/logs/autorepair/suggest
-     * Suggests a code correction for a specific exception event.
-     */
+
     @PostMapping("/suggest")
     public ResponseEntity<?> suggestRepair(
             @RequestBody AutoRepairSuggestRequest request,
@@ -74,7 +71,7 @@ public class AutoRepairController {
 
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            LOGGER.error("Invalid arguments in repair suggestion request: {}", e.getMessage());
+            LOGGER.warn("Invalid arguments in repair suggestion request: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
             LOGGER.error("Failed to generate repair suggestion: {}", e.getMessage(), e);
@@ -83,10 +80,7 @@ public class AutoRepairController {
         }
     }
 
-    /**
-     * POST /api/logs/autorepair/apply
-     * Executes the patch change locally or pushes a commit to GitHub.
-     */
+
     @PostMapping("/apply")
     public ResponseEntity<?> applyRepair(
             @RequestBody AutoRepairApplyRequest request,

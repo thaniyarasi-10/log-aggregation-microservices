@@ -23,41 +23,62 @@ public class SourceCodeService {
         LOGGER.info("Dynamic Project Root resolved to: {}", projectRoot.getAbsolutePath());
     }
 
-    private File checkDirAndParents(File dir) {
-        for (int i = 0; i < 8; i++) {
-            if (dir == null) break;
-            
-            // Check direct subdirectories
-            File gatewayDir = new File(dir, "gateway-service");
-            File logserviceDir = new File(dir, "logservice");
-            if (gatewayDir.isDirectory() && logserviceDir.isDirectory()) {
-                return dir;
-            }
-            
-            // Check nested subdirectories (e.g., in a monorepo subdirectory)
-            File nestedRoot = new File(dir, "log-aggregation-microservices");
-            if (nestedRoot.isDirectory()) {
-                File nestedGateway = new File(nestedRoot, "gateway-service");
-                File nestedLogservice = new File(nestedRoot, "logservice");
-                if (nestedGateway.isDirectory() && nestedLogservice.isDirectory()) {
-                    return nestedRoot;
-                }
-            }
-            
-            dir = dir.getParentFile();
+    private boolean isValidProjectRoot(File dir) {
+        if (dir == null || !dir.isDirectory()) {
+            return false;
         }
-        return null;
+        
+        String path = dir.getAbsolutePath();
+        String userHome = System.getProperty("user.home");
+        if (path.equals(userHome) || path.equals("/") || path.endsWith(":\\") || path.endsWith(":\\..")) {
+            return false; // Skip system roots and user home directory to prevent incorrect mapping and home directory walks
+        }
+        
+        // Check for presence of project folders
+        File gitDir = new File(dir, ".git");
+        File gatewayDir = new File(dir, "gateway-service");
+        File logserviceDir = new File(dir, "logservice");
+        File notificationDir = new File(dir, "notificationservice");
+        File managementDir = new File(dir, "servicemanagementservice");
+        
+        return (gitDir.isDirectory() && gatewayDir.isDirectory() && logserviceDir.isDirectory() &&
+                notificationDir.isDirectory() && managementDir.isDirectory());
     }
 
     private File resolveProjectRoot() {
-        // First try to check based on current working directory and parent paths
+        // 1. Try to traverse up from current working directory
         File dir = new File(".").getAbsoluteFile();
-        File found = checkDirAndParents(dir);
-        if (found != null) {
-            return found;
+        for (int i = 0; i < 8; i++) {
+            if (dir == null) break;
+            if (isValidProjectRoot(dir)) {
+                return dir;
+            }
+            // Check nested folder too (in case cwd is outside the repo directory but parent directory contains it)
+            File nestedRoot = new File(dir, "log-aggregation-microservices");
+            if (isValidProjectRoot(nestedRoot)) {
+                return nestedRoot;
+            }
+            dir = dir.getParentFile();
         }
 
-        // If not found, check the classpath to find where the classes are loaded from
+        // 2. Try to traverse up from System property user.dir
+        String userDirProp = System.getProperty("user.dir");
+        if (userDirProp != null) {
+            dir = new File(userDirProp).getAbsoluteFile();
+            for (int i = 0; i < 8; i++) {
+                if (dir == null) break;
+                if (isValidProjectRoot(dir)) {
+                    return dir;
+                }
+                File nestedRoot = new File(dir, "log-aggregation-microservices");
+                if (isValidProjectRoot(nestedRoot)) {
+                    return nestedRoot;
+                }
+                dir = dir.getParentFile();
+            }
+        }
+
+        // 3. Fallback to classpath entries (scanning parent directories but respecting the home-directory guard)
         String classPath = System.getProperty("java.class.path");
         if (classPath != null) {
             String separator = System.getProperty("path.separator", File.pathSeparator);
@@ -70,15 +91,44 @@ public class SourceCodeService {
                     entry.contains("servicemanagementservice")) {
                     
                     File entryFile = new File(entry).getAbsoluteFile();
-                    found = checkDirAndParents(entryFile);
-                    if (found != null) {
-                        return found;
+                    dir = entryFile;
+                    for (int i = 0; i < 8; i++) {
+                        if (dir == null) break;
+                        if (isValidProjectRoot(dir)) {
+                            return dir;
+                        }
+                        File nestedRoot = new File(dir, "log-aggregation-microservices");
+                        if (isValidProjectRoot(nestedRoot)) {
+                            return nestedRoot;
+                        }
+                        dir = dir.getParentFile();
                     }
                 }
             }
         }
 
-        // Fallback to current working directory
+        // 4. Ultimate fallback to check for any direct folders containing microservices in parent hierarchy
+        // even if .git is missing (e.g. running in Docker container without .git)
+        dir = new File(".").getAbsoluteFile();
+        for (int i = 0; i < 8; i++) {
+            if (dir == null) break;
+            File gatewayDir = new File(dir, "gateway-service");
+            File logserviceDir = new File(dir, "logservice");
+            if (gatewayDir.isDirectory() && logserviceDir.isDirectory()) {
+                return dir;
+            }
+            File nestedRoot = new File(dir, "log-aggregation-microservices");
+            if (nestedRoot.isDirectory()) {
+                File nestedGateway = new File(nestedRoot, "gateway-service");
+                File nestedLogservice = new File(nestedRoot, "logservice");
+                if (nestedGateway.isDirectory() && nestedLogservice.isDirectory()) {
+                    return nestedRoot;
+                }
+            }
+            dir = dir.getParentFile();
+        }
+
+        LOGGER.warn("Could not dynamically resolve a valid project root using strict validation. Falling back to current directory.");
         return new File(".").getAbsoluteFile();
     }
 
@@ -179,7 +229,9 @@ public class SourceCodeService {
                 public java.nio.file.FileVisitResult preVisitDirectory(Path dir, java.nio.file.attribute.BasicFileAttributes attrs) {
                     String name = dir.getFileName().toString();
                     if (name.equals(".git") || name.equals("node_modules") || name.equals("target") || 
-                        name.equals("dist") || name.equals(".idea")) {
+                        name.equals("dist") || name.equals(".idea") || name.equals("logs") || 
+                        name.equals("out") || name.equals("build") || name.equals(".gradle") || 
+                        name.equals("bin")) {
                         return java.nio.file.FileVisitResult.SKIP_SUBTREE;
                     }
                     return java.nio.file.FileVisitResult.CONTINUE;

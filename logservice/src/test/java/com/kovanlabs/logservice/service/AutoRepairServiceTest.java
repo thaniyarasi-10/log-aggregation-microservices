@@ -77,7 +77,7 @@ class AutoRepairServiceTest {
                 "  \"diff\": \"- private String val;\\n+ private String val = \\\"\\\";\"\n" +
                 "}";
 
-        when(geminiAnalysisService.generateContent(anyString(), anyBoolean()))
+        when(geminiAnalysisService.generateContent(anyString(), anyBoolean(), any()))
                 .thenReturn(mockGeminiResponse);
 
         when(gitHubService.isConfigured()).thenReturn(true);

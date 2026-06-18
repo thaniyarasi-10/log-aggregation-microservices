@@ -31,6 +31,7 @@ public class AutoRepairService {
         this.geminiAnalysisService = geminiAnalysisService;
         this.gitHubService = gitHubService;
         this.objectMapper = new ObjectMapper();
+        this.objectMapper.configure(com.fasterxml.jackson.core.json.JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
     }
 
     /**
@@ -95,7 +96,18 @@ public class AutoRepairService {
 
         // 3. Call Gemini
         LOGGER.debug("Submitting repair request to Gemini Analysis Service...");
-        String responseText = geminiAnalysisService.generateContent(prompt, true);
+        Map<String, Object> responseSchema = Map.of(
+                "type", "OBJECT",
+                "properties", Map.of(
+                        "explanation", Map.of("type", "STRING"),
+                        "targetFile", Map.of("type", "STRING"),
+                        "originalCode", Map.of("type", "STRING"),
+                        "fixedCode", Map.of("type", "STRING"),
+                        "diff", Map.of("type", "STRING")
+                ),
+                "required", java.util.List.of("explanation", "targetFile", "originalCode", "fixedCode", "diff")
+        );
+        String responseText = geminiAnalysisService.generateContent(prompt, true, responseSchema);
 
         if (responseText == null || responseText.isBlank()) {
             throw new IOException("Gemini AI failed to return a valid repair suggestion.");

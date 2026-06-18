@@ -294,10 +294,10 @@ export default function LogDrawer({ log, onClose }: Props) {
 
   // AutoRepair triggers
   useEffect(() => {
-    if (tab === 'autorepair' && !repairPlan && !repairLoading && log?.caller) {
+    if (tab === 'autorepair' && !repairPlan && !repairLoading && !repairError && log?.caller) {
       fetchRepair();
     }
-  }, [tab, repairPlan, repairLoading, log, fetchRepair]);
+  }, [tab, repairPlan, repairLoading, repairError, log, fetchRepair]);
 
   // Reset tab when a new log is opened
   useEffect(() => {

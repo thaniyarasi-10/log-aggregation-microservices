@@ -24,10 +24,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * REST controller for retrieving error logs, specific suggestion entities,
- * and error statistics/patterns.
- */
+
 @RestController
 @RequestMapping("/api/logs/errors")
 public class ErrorSuggestionController {
@@ -36,19 +33,12 @@ public class ErrorSuggestionController {
 
     private final ElasticRepository elasticRepository;
 
-    /**
-     * Constructor injection.
-     *
-     * @param elasticRepository the elasticsearch query repository
-     */
+
     public ErrorSuggestionController(ElasticRepository elasticRepository) {
         this.elasticRepository = elasticRepository;
     }
 
-    /**
-     * GET /api/logs/errors
-     * Retrieves all error-level logs with suggestion details attached.
-     */
+
     @GetMapping
     public ResponseEntity<List<LogEvent>> getErrors(
             @RequestParam(value = "service", required = false) String service,
@@ -68,10 +58,6 @@ public class ErrorSuggestionController {
         return ResponseEntity.ok(results);
     }
 
-    /**
-     * GET /api/logs/errors/{id}
-     * Retrieves a specific error log with suggestion details by its Elasticsearch ID.
-     */
     @GetMapping("/{id}")
     public ResponseEntity<LogEvent> getErrorById(
             @PathVariable("id") String id,
@@ -87,10 +73,6 @@ public class ErrorSuggestionController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    /**
-     * GET /api/logs/errors/top-patterns
-     * Aggregates and returns the top recurring exception patterns.
-     */
     @GetMapping("/top-patterns")
     public ResponseEntity<List<Map<String, Object>>> getTopPatterns(
             @RequestHeader(value = "X-User-Email", required = false) String userEmail,
@@ -117,10 +99,6 @@ public class ErrorSuggestionController {
         return ResponseEntity.ok(formattedPatterns);
     }
 
-    /**
-     * GET /api/logs/errors/by-error-type/{errorType}
-     * Retrieves all error-level logs belonging to a specific error pattern type.
-     */
     @GetMapping("/by-error-type/{errorType}")
     public ResponseEntity<List<LogEvent>> getErrorsByErrorType(
             @PathVariable("errorType") String errorType,
@@ -140,11 +118,7 @@ public class ErrorSuggestionController {
         return ResponseEntity.ok(results);
     }
 
-    /**
-     * GET /api/logs/errors/stats
-     * Exposes consolidated error statistics including count per type,
-     * top recurring, and most affected services.
-     */
+
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getStats(
             @RequestHeader(value = "X-User-Email", required = false) String userEmail,
@@ -158,11 +132,6 @@ public class ErrorSuggestionController {
         return ResponseEntity.ok(stats);
     }
 
-    /**
-     * GET /api/logs/errors/ai-stats
-     * Exposes AI analysis statistics including most common AI-generated errors,
-     * most reused knowledge-base entries, saved Gemini API calls, and top root causes.
-     */
     @GetMapping("/ai-stats")
     public ResponseEntity<Map<String, Object>> getAiStats(
             @RequestHeader(value = "X-User-Email", required = false) String userEmail,

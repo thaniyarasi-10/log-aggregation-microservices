@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kovanlabs.logservice.model.ErrorSuggestion;
 import com.kovanlabs.logservice.model.LogEvent;
+import com.kovanlabs.logservice.model.LogCaller;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
@@ -205,6 +206,35 @@ public class ErrorSuggestionService {
 
         String message = ErrorNormalizer.normalize(logEvent.getMessage());
         String errorDetails = ErrorNormalizer.normalize(logEvent.getErrorDetails());
+        
+        // Prevent infinite feedback loop from AI/AutoRepair log events
+        LogCaller caller = logEvent.getCaller();
+        String callerClass = caller != null && caller.getClassName() != null ? caller.getClassName() : "";
+        String msgLower = message != null ? message.toLowerCase() : "";
+        String detailsLower = errorDetails != null ? errorDetails.toLowerCase() : "";
+        
+        if (callerClass.contains("GeminiAnalysisService") || 
+            callerClass.contains("AutoRepairService") || 
+            callerClass.contains("AutoRepairController") ||
+            callerClass.contains("ErrorSuggestionService") ||
+            msgLower.contains("autorepair") || 
+            msgLower.contains("gemini") ||
+            detailsLower.contains("autorepair") ||
+            detailsLower.contains("gemini")) {
+            
+            LOGGER.debug("[Learning Pipeline] Skipping suggestion attachment for AI/AutoRepair related log to prevent feedback loop. Service: {}, Message: {}", 
+                    logEvent.getService(), message != null && message.length() > 60 ? message.substring(0, 60) + "..." : message);
+            logEvent.setErrorType("AutoRepairLoopGuard");
+            logEvent.setPossibleCauses(List.of("Observability pipeline log recursion guard"));
+            logEvent.setSuggestedFixes(List.of("No action needed - this is an ignored pipeline event"));
+            logEvent.setSeverity("LOW");
+            logEvent.setSuggestionSource("SYSTEM_GUARD");
+            logEvent.setConfidence(100);
+            logEvent.setRootCause("AI AutoRepair pipeline event");
+            logEvent.setSuggestionGeneratedAt(Instant.now().toString());
+            return;
+        }
+
         LOGGER.info("[Learning Pipeline] Starting suggestion attachment for service '{}'. Message: '{}'", 
                 logEvent.getService(), message != null && message.length() > 60 ? message.substring(0, 60) + "..." : message);
 

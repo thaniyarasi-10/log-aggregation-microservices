@@ -33,7 +33,7 @@ public class GeminiAnalysisService {
     @Value("${gemini.api.key:}")
     private String apiKey;
 
-    @Value("${gemini.api.model:gemini-3.5-flash}")
+    @Value("${gemini.api.model:gemini-2.5-flash}")
     private String modelName;
 
     public GeminiAnalysisService(io.micrometer.core.instrument.MeterRegistry meterRegistry) {
@@ -42,6 +42,7 @@ public class GeminiAnalysisService {
         requestFactory.setReadTimeout(30000); // 30 seconds to support potential latency
         this.restTemplate = new RestTemplate(requestFactory);
         this.objectMapper = new ObjectMapper();
+        this.objectMapper.configure(com.fasterxml.jackson.core.json.JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS.mappedFeature(), true);
         this.meterRegistry = meterRegistry;
     }
 
@@ -105,6 +106,20 @@ public class GeminiAnalysisService {
 
                 Map<String, Object> generationConfig = new HashMap<>();
                 generationConfig.put("responseMimeType", "application/json");
+
+                Map<String, Object> analyzeSchema = Map.of(
+                        "type", "OBJECT",
+                        "properties", Map.of(
+                                "errorType", Map.of("type", "STRING"),
+                                "severity", Map.of("type", "STRING"),
+                                "rootCause", Map.of("type", "STRING"),
+                                "possibleCauses", Map.of("type", "ARRAY", "items", Map.of("type", "STRING")),
+                                "suggestedFixes", Map.of("type", "ARRAY", "items", Map.of("type", "STRING")),
+                                "confidence", Map.of("type", "INTEGER")
+                        ),
+                        "required", List.of("errorType", "severity", "rootCause", "possibleCauses", "suggestedFixes", "confidence")
+                );
+                generationConfig.put("responseSchema", analyzeSchema);
                 
                 // Disable thinking/reasoning budget to speed up responses and save tokens
                 Map<String, Object> thinkingConfig = new HashMap<>();
@@ -145,6 +160,16 @@ public class GeminiAnalysisService {
                 lastException = e;
                 LOGGER.warn("Gemini API call failed in analyze on attempt {}: {}", attempt, e.getMessage());
 
+                boolean isReadTimeout = false;
+                if (e instanceof org.springframework.web.client.ResourceAccessException) {
+                    Throwable cause = e.getCause();
+                    if (cause instanceof java.net.SocketTimeoutException && 
+                        cause.getMessage() != null && 
+                        cause.getMessage().contains("Read timed out")) {
+                        isReadTimeout = true;
+                    }
+                }
+
                 // Track timeout metrics under gemini.api.timeouts
                 if (e instanceof org.springframework.web.client.ResourceAccessException || 
                     (e.getCause() != null && e.getCause() instanceof java.net.SocketTimeoutException) ||
@@ -156,6 +181,18 @@ public class GeminiAnalysisService {
                             LOGGER.warn("Failed to increment Gemini timeout metric: {}", me.getMessage());
                         }
                     }
+                }
+
+                if (e instanceof org.springframework.web.client.HttpStatusCodeException se) {
+                    org.springframework.http.HttpStatusCode status = se.getStatusCode();
+                    if (status.value() == 429 || status.is4xxClientError()) {
+                        LOGGER.error("Gemini API returned non-retryable status {} in analyze. Aborting retries.", status);
+                        break;
+                    }
+                }
+                if (isReadTimeout) {
+                    LOGGER.warn("Gemini API call read timed out in analyze. Skipping further retries.");
+                    break;
                 }
 
                 if (attempt < maxRetries) {
@@ -182,6 +219,19 @@ public class GeminiAnalysisService {
      * @return the raw text or JSON response string, or null if generation failed
      */
     public String generateContent(String prompt, boolean jsonMode) {
+        return generateContent(prompt, jsonMode, null);
+    }
+
+    /**
+     * Sends a generic prompt to the Gemini API, optionally requiring structured JSON response with a schema.
+     * Includes transient error retries and timeout protection.
+     *
+     * @param prompt          the text prompt to send
+     * @param jsonMode        true if the response should be formatted as application/json
+     * @param responseSchema  optional structured JSON schema to enforce on the response
+     * @return the raw text or JSON response string, or null if generation failed
+     */
+    public String generateContent(String prompt, boolean jsonMode, Map<String, Object> responseSchema) {
         if (apiKey == null || apiKey.isBlank()) {
             LOGGER.warn("Gemini API key is not configured. Skipping content generation.");
             return null;
@@ -205,6 +255,9 @@ public class GeminiAnalysisService {
                 Map<String, Object> generationConfig = new HashMap<>();
                 if (jsonMode) {
                     generationConfig.put("responseMimeType", "application/json");
+                    if (responseSchema != null) {
+                        generationConfig.put("responseSchema", responseSchema);
+                    }
                 }
                 
                 Map<String, Object> thinkingConfig = new HashMap<>();
@@ -241,6 +294,29 @@ public class GeminiAnalysisService {
             } catch (Exception e) {
                 lastException = e;
                 LOGGER.warn("Gemini API call failed in generateContent on attempt {}: {}", attempt, e.getMessage());
+
+                boolean isReadTimeout = false;
+                if (e instanceof org.springframework.web.client.ResourceAccessException) {
+                    Throwable cause = e.getCause();
+                    if (cause instanceof java.net.SocketTimeoutException && 
+                        cause.getMessage() != null && 
+                        cause.getMessage().contains("Read timed out")) {
+                        isReadTimeout = true;
+                    }
+                }
+
+                if (e instanceof org.springframework.web.client.HttpStatusCodeException se) {
+                    org.springframework.http.HttpStatusCode status = se.getStatusCode();
+                    if (status.value() == 429 || status.is4xxClientError()) {
+                        LOGGER.error("Gemini API returned non-retryable status {} in generateContent. Aborting retries.", status);
+                        break;
+                    }
+                }
+                if (isReadTimeout) {
+                    LOGGER.warn("Gemini API call read timed out in generateContent. Skipping further retries.");
+                    break;
+                }
+
                 if (attempt < maxRetries) {
                     try {
                         Thread.sleep(delayMs * attempt);
