@@ -82,6 +82,8 @@ public class NotificationController {
                     alertNotificationService.sendAlert(request);
                 } catch (Exception ex) {
                     LOGGER.error("Failed to process alert asynchronously: {}", ex.getMessage(), ex);
+                } catch (org.springframework.dao.IncorrectResultSizeDataAccessException ex) {
+                    LOGGER.error("Failed to process alert asynchronously due to non-unique result: {}", ex.getMessage(), ex);
                 }
             });
         }
