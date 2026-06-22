@@ -181,6 +181,9 @@ public class JiraConfigurationController {
             return ResponseEntity.ok(users);
         } catch (Exception ex) {
             LOGGER.warn("Failed to lookup Jira users (Jira connection or project key might be invalid): {}", ex.getMessage());
+            if (ex.getMessage() != null && ex.getMessage().contains("404")) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid Jira project key or configuration");
+            }
             return ResponseEntity.ok(List.of());
         }
     }
